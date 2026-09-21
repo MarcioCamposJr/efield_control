@@ -1,0 +1,38 @@
+# Calibration for the two-servo hemispherical stage.
+# For each axis, the physical Arduino command is calculated as:
+#   command_deg = center_command_deg + direction * scale * logical_angle_deg
+# Calibrate with the sensor safely away from the coil and mechanical stops.
+
+[metadata]
+# Unique name and date used to identify this calibration in saved run data.
+calibration_id = "angular-stage-default"
+calibrated_at = "2026-09-21"
+description = "Initial calibration migrated from the legacy hemispherical map"
+
+[base]
+# Physical servo command that places the base axis at logical 0 degrees.
+center_command_deg = 90.0
+
+# Use 1 when positive logical angles increase the servo command, or -1 when
+# the mechanical direction is reversed.
+direction = 1
+
+# Physical servo degrees per logical degree. Keep 1.0 unless measured geometry
+# requires a correction factor.
+scale = 1.0
+
+# Safe physical command limits. Every generated command is checked against
+# these limits before the hardware connection is opened.
+minimum_command_deg = 0.0
+maximum_command_deg = 180.0
+
+[inclination]
+# Physical servo command that places the inclination axis at logical 0 degrees.
+# The legacy setup used 92 degrees as its measured center.
+center_command_deg = 92.0
+
+# Direction, scale, and limits have the same meaning as in the base section.
+direction = 1
+scale = 1.0
+minimum_command_deg = 0.0
+maximum_command_deg = 180.0

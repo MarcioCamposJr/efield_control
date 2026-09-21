@@ -1,0 +1,157 @@
+# Experiment configuration.
+# Device addresses and serial-port settings belong in .env, not in this file.
+# Values may be overridden by command-line arguments for a single run.
+
+[acquisition]
+# Red Pitaya ADC decimation factor. For a 125 MS/s board, the effective sample
+# rate is 125e6 / decimation (8 gives approximately 15.625 MS/s).
+decimation = 8
+
+# Acquisition trigger condition. EXT_PE waits for a positive edge and EXT_NE
+# waits for a negative edge on the Red Pitaya external-trigger input.
+trigger_source = "EXT_PE"
+
+# Trigger position in decimated samples. Zero places the trigger near the
+# middle of the 16384-sample buffer; positive values retain more post-trigger
+# samples and negative values retain more pre-trigger samples.
+trigger_delay = 0
+
+# Maximum time to wait for the selected trigger after arming the acquisition.
+trigger_timeout_s = 10.0
+
+# Maximum time to wait for the acquisition buffer to finish filling.
+buffer_timeout_s = 10.0
+
+# Number of acquisitions performed at each map position.
+repetitions = 1
+
+# Delay between repeated acquisitions at the same position. Ignored when
+# repetitions is 1.
+repetition_interval_s = 2.0
+
+# true selects the Red Pitaya HV input range; false selects LV. Verify the
+# voltage limits for the exact Red Pitaya model before connecting the sensor.
+high_voltage = true
+
+[pulse]
+# Device that sends the firing command to the TMS:
+#   "redpitaya" -> toggle the Red Pitaya digital output selected by pin.
+#   "serial"    -> send FIRE to the Arduino over its serial connection.
+#   "mtms_api"  -> charge and pulse one mTMS channel through MTMSApi while
+#                  sending a simultaneous trigger-out marker to Red Pitaya.
+# The intended architecture uses "redpitaya"; "serial" is retained for the
+# legacy Arduino-trigger arrangement. "mtms_api" controls stimulation through
+# software, but still uses the configured trigger-out connection for acquisition
+# synchronization.
+source = "serial"
+
+# Red Pitaya digital output used when source = "redpitaya". This field is
+# ignored when source = "serial" or "mtms_api". Confirm the physical E1 pin and
+# 3.3 V electrical interface before wiring it to the TMS.
+pin = "DIO1_P"
+
+# Red Pitaya output pulse width in seconds. This field is ignored for the
+# serial source because the Arduino firmware defines its own pulse width. It is
+# also ignored by mtms_api, which has its own trigger-out duration below.
+duration_s = 0.010
+
+[mtms]
+# Single-channel stimulation settings used only when pulse.source = "mtms_api".
+# Channel numbering starts at zero. allowed_channels is an installation-level
+# safety allowlist and must match the connected coil set before hardware use.
+channel = 0
+allowed_channels = [0, 1]
+
+# The direct single-channel API controls capacitor charge voltage, not a
+# percentage and not electric-field intensity in V/m. maximum_target_voltage_v
+# is an independent software ceiling and must be approved for the installation.
+target_voltage_v = 20.0
+maximum_target_voltage_v = 20.0
+
+# Reverse the pulse polarity while retaining the default channel waveform.
+reverse_polarity = false
+
+# The marker sent by mTMS to the Red Pitaya at the exact scheduled pulse time.
+# Confirm the physical port, accepted voltage, and duration before operation.
+trigger_out_port = 1
+trigger_out_duration_us = 1000
+
+# Both send_pulse and send_trigger_out are scheduled this many seconds ahead on
+# the mTMS clock. This provides time for both commands to reach the device.
+schedule_lead_s = 1.0
+
+# Local rate-limit guard. A new pulse is rejected when less than this number of
+# seconds has elapsed since completion of the previous pulse.
+minimum_inter_pulse_interval_s = 2.0
+
+# Explicitly discharge the selected channel to 0 V after every pulse. Shutdown
+# also attempts to discharge a channel that may remain charged.
+discharge_after_pulse = true
+
+[robot]
+# Maximum time allowed for a robot movement to complete.
+movement_timeout_s = 30.0
+
+# Additional pause after the robot reports that a movement is complete. This
+# allows mechanical vibration to decay before acquisition.
+settling_time_s = 1.0
+
+# Selects the newer Elfin controller command variant. Leave false unless the
+# connected controller has been verified to require the new API.
+use_new_api = false
+
+[centering]
+# First X/Y displacement tested by the feedback centering algorithm.
+initial_step_mm = 1.0
+
+# Smallest displacement that may be tested. Centering stops when another step
+# reduction would go below this value.
+minimum_step_mm = 0.5
+
+# Multiplier applied to the step after no direction improves the measurement.
+# Must be greater than 0 and less than 1.
+step_reduction = 0.5
+
+# Minimum fractional signal improvement required to accept a new position.
+# For example, 0.005 means 0.5 percent.
+relative_improvement = 0.005
+
+# Maximum number of centering search iterations.
+max_iterations = 20
+
+# Safety boundary around the initial center guess. The algorithm will not
+# command a position farther than this distance in the X/Y plane.
+max_radius_mm = 20.0
+
+[planar_mapping]
+# Cartesian limits are offsets, in millimetres, from the centered origin pose.
+# Stop values are included when they fall on the configured step. The path is
+# serpentine: each Y row reverses the X traversal direction.
+x_start_mm = -90.0
+x_stop_mm = 90.0
+x_step_mm = 10.0
+y_start_mm = -55.0
+y_stop_mm = 55.0
+y_step_mm = 11.0
+
+[circular_mapping]
+# Logical angular limits relative to the calibrated zero of each axis. These
+# are converted to physical servo commands using angular_stage.toml. Stop
+# values are included when they fall on the step, and traversal is serpentine.
+base_start_deg = -90.0
+base_stop_deg = 90.0
+base_step_deg = 5.0
+inclination_start_deg = -90.0
+inclination_stop_deg = 85.0
+inclination_step_deg = 5.0
+
+# Move both angular axes to their calibrated logical zero before mapping.
+center_before_mapping = true
+
+[storage]
+# Directory in which each run creates its summary and resolved configuration.
+output_directory = "data"
+
+# Save complete CH1/CH2 sample arrays in addition to summary measurements.
+# Disable this to reduce disk use during large maps.
+save_waveforms = true

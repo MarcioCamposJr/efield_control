@@ -1,0 +1,585 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections.abc import Iterable
+from typing import Any
+
+from .acquisition import AcquisitionService, AcquisitionSettings
+from .calibration import CalibratedAngularPositioner, calibrated_center_guess
+from .centering import CenteringSettings, SensorCentering
+from .configuration import ProjectConfig, load_project_config
+from .drivers.red_pitaya import (
+    RedPitayaAcquisition,
+    RedPitayaDigitalPulse,
+    RedPitayaSettings,
+)
+from .drivers.robots.elfin import ElfinRobotAdapter
+from .drivers.serial_controller import SerialMotorController
+from .drivers.stimulators.mtms import (
+    MtmsApiPulse,
+    MtmsSingleChannelClient,
+    MtmsSingleChannelSettings,
+)
+from .mapping import CircularMapping, PlanarMapping, circular_serpentine, planar_serpentine
+from .storage import CsvRunStore, MeasurementLocation
+from .workflows import CenterSensorWorkflow
+
+
+HARDWARE_CONFIRMATION = "MOVE_AND_FIRE"
+
+
+def inclusive_range(start: float, stop: float, step: float) -> tuple[float, ...]:
+    if step == 0 or (stop - start) * step < 0:
+        raise ValueError("Invalid range: check start, stop, and step values.")
+    values: list[float] = []
+    current = start
+    compare = (lambda value: value <= stop + 1e-9) if step > 0 else (
+        lambda value: value >= stop - 1e-9
+    )
+    while compare(current):
+        values.append(round(current, 10))
+        if len(values) > 100_000:
+            raise ValueError("The range exceeds 100,000 points.")
+        current += step
+    return tuple(values)
+
+
+def _require_confirmation(args: argparse.Namespace) -> None:
+    if args.confirm_hardware != HARDWARE_CONFIRMATION:
+        raise SystemExit(
+            "Operation blocked. Review all limits and use "
+            f"--confirm-hardware {HARDWARE_CONFIRMATION} to authorize "
+            "real motion and pulse generation."
+        )
+
+
+def _require_value(args: argparse.Namespace, attribute: str, source: str) -> Any:
+    value = getattr(args, attribute, None)
+    if value in (None, ""):
+        raise SystemExit(f"Missing {source}. Set it in .env, TOML, or the CLI.")
+    return value
+
+
+def _acquisition(args: argparse.Namespace) -> RedPitayaAcquisition:
+    host = _require_value(args, "rp_ip", "Red Pitaya host")
+    return RedPitayaAcquisition(
+        RedPitayaSettings(
+            host=host,
+            port=args.rp_port,
+            decimation=args.decimation,
+            trigger_source=args.trigger_source,
+            trigger_delay=args.trigger_delay,
+            high_voltage=args.high_voltage,
+        )
+    )
+
+
+def _service(
+    args: argparse.Namespace,
+    acquisition: RedPitayaAcquisition,
+    serial_controller: SerialMotorController | None,
+    mtms_pulse: MtmsApiPulse | None = None,
+) -> AcquisitionService:
+    if args.pulse_source == "serial":
+        if serial_controller is None:
+            raise ValueError("The serial pulse source requires a serial port.")
+        pulse = serial_controller
+    elif args.pulse_source == "redpitaya":
+        pulse = RedPitayaDigitalPulse(
+            acquisition.client,
+            pin=args.pulse_pin,
+            pulse_s=args.pulse_duration,
+        )
+    else:
+        if mtms_pulse is None:
+            raise RuntimeError("The mTMS API pulse source is not connected.")
+        pulse = mtms_pulse
+    return AcquisitionService(
+        acquisition,
+        pulse,
+        AcquisitionSettings(
+            repetitions=args.repetitions,
+            interval_s=args.repetition_interval,
+            trigger_timeout_s=args.trigger_timeout,
+            buffer_timeout_s=args.buffer_timeout,
+        ),
+    )
+
+
+def _serial_if_requested(args: argparse.Namespace) -> SerialMotorController | None:
+    if args.pulse_source != "serial":
+        return None
+    port = _require_value(args, "serial_port", "stage serial port")
+    controller = SerialMotorController(
+        port=port,
+        baudrate=args.serial_baud,
+        timeout_s=args.serial_timeout,
+        movement_settling_s=args.settling_time,
+    )
+    controller.ping()
+    return controller
+
+
+def _mtms_if_requested(args: argparse.Namespace) -> MtmsApiPulse | None:
+    if args.pulse_source != "mtms_api":
+        return None
+    client = MtmsSingleChannelClient(
+        MtmsSingleChannelSettings(
+            channel=args.mtms_channel,
+            allowed_channels=tuple(args.mtms_allowed_channels),
+            target_voltage_v=args.mtms_target_voltage,
+            maximum_target_voltage_v=args.mtms_maximum_target_voltage,
+            reverse_polarity=args.mtms_reverse_polarity,
+            trigger_out_port=args.mtms_trigger_out_port,
+            trigger_out_duration_us=args.mtms_trigger_out_duration,
+            schedule_lead_s=args.mtms_schedule_lead,
+            minimum_inter_pulse_interval_s=args.mtms_minimum_interval,
+            discharge_after_pulse=args.mtms_discharge_after_pulse,
+        )
+    )
+    pulse = MtmsApiPulse(client)
+    pulse.connect()
+    return pulse
+
+
+def _new_store(args: argparse.Namespace, run_name: str) -> CsvRunStore:
+    store = CsvRunStore(
+        args.output,
+        run_name,
+        save_waveforms=args.save_waveforms,
+    )
+    config: ProjectConfig = args.project_config
+    effective = {
+        key: value
+        for key, value in vars(args).items()
+        if key not in {"handler", "project_config"} and not callable(value)
+    }
+    store.write_json(
+        "resolved_config.json",
+        {"loaded_config": config.to_dict(), "effective_cli": effective},
+    )
+    return store
+
+
+def run_center(args: argparse.Namespace) -> int:
+    _require_confirmation(args)
+    algorithm = SensorCentering(
+        CenteringSettings(
+            initial_step_mm=args.initial_step,
+            minimum_step_mm=args.minimum_step,
+            step_reduction=args.step_reduction,
+            relative_improvement=args.relative_improvement,
+            max_iterations=args.max_iterations,
+            max_radius_mm=args.max_radius,
+        )
+    )
+    _validate_runtime_settings(args)
+    robot = ElfinRobotAdapter(
+        _require_value(args, "robot_ip", "robot host"),
+        use_new_api=args.use_new_api,
+        movement_timeout_s=args.movement_timeout,
+        settling_time_s=args.settling_time,
+    )
+    acquisition = _acquisition(args)
+    serial_controller = None
+    mtms_pulse = None
+    robot_connected = False
+    store = _new_store(args, "centering")
+    try:
+        robot.connect()
+        robot_connected = True
+        serial_controller = _serial_if_requested(args)
+        mtms_pulse = _mtms_if_requested(args)
+        service = _service(args, acquisition, serial_controller, mtms_pulse)
+        def save_sample(sample) -> None:
+            store.append(
+                MeasurementLocation(
+                    mode="centering",
+                    label=f"{sample.iteration}:{sample.label}",
+                    x_mm=sample.x_mm,
+                    y_mm=sample.y_mm,
+                ),
+                sample.measurement,
+            )
+
+        origin = calibrated_center_guess(
+            robot.current_pose(), args.project_config.sensor_calibration
+        )
+        result = CenterSensorWorkflow(robot, service, algorithm).run(
+            origin=origin,
+            observer=save_sample,
+        )
+        print(
+            f"Center found: X={result.x_mm:.3f} mm, "
+            f"Y={result.y_mm:.3f} mm, M={result.measurement.magnitude_v:.6f} V"
+        )
+        print(f"Results: {store.run_directory}")
+        return 0
+    except BaseException:
+        if robot_connected:
+            try:
+                robot.stop()
+            except Exception:
+                pass
+        raise
+    finally:
+        if robot_connected:
+            robot.disconnect()
+        try:
+            if mtms_pulse is not None:
+                mtms_pulse.close()
+        finally:
+            try:
+                acquisition.close()
+            finally:
+                if serial_controller is not None:
+                    serial_controller.close()
+
+
+def run_planar(args: argparse.Namespace) -> int:
+    _require_confirmation(args)
+    _validate_runtime_settings(args)
+    points = tuple(
+        planar_serpentine(
+            inclusive_range(args.x_start, args.x_stop, args.x_step),
+            inclusive_range(args.y_start, args.y_stop, args.y_step),
+        )
+    )
+    robot = ElfinRobotAdapter(
+        _require_value(args, "robot_ip", "robot host"),
+        use_new_api=args.use_new_api,
+        movement_timeout_s=args.movement_timeout,
+        settling_time_s=args.settling_time,
+    )
+    acquisition = _acquisition(args)
+    serial_controller = None
+    mtms_pulse = None
+    robot_connected = False
+    store = _new_store(args, "planar")
+    try:
+        robot.connect()
+        robot_connected = True
+        serial_controller = _serial_if_requested(args)
+        mtms_pulse = _mtms_if_requested(args)
+        service = _service(args, acquisition, serial_controller, mtms_pulse)
+        origin = robot.current_pose()
+        for point, pose, measurement in PlanarMapping(robot, service).run(origin, points):
+            store.append(
+                MeasurementLocation(
+                    mode="planar",
+                    label=f"{point.row},{point.column}",
+                    x_mm=pose.x_mm,
+                    y_mm=pose.y_mm,
+                    z_mm=pose.z_mm,
+                ),
+                measurement,
+            )
+        print(f"Planar map completed: {store.run_directory}")
+        return 0
+    except BaseException:
+        if robot_connected:
+            try:
+                robot.stop()
+            except Exception:
+                pass
+        raise
+    finally:
+        if robot_connected:
+            robot.disconnect()
+        try:
+            if mtms_pulse is not None:
+                mtms_pulse.close()
+        finally:
+            try:
+                acquisition.close()
+            finally:
+                if serial_controller is not None:
+                    serial_controller.close()
+
+
+def run_circular(args: argparse.Namespace) -> int:
+    _require_confirmation(args)
+    _validate_runtime_settings(args)
+    config: ProjectConfig = args.project_config
+    points = tuple(
+        circular_serpentine(
+            inclusive_range(args.base_start, args.base_stop, args.base_step),
+            inclusive_range(
+                args.inclination_start,
+                args.inclination_stop,
+                args.inclination_step,
+            ),
+        )
+    )
+    for point in points:
+        config.angular_calibration.commands_for(
+            point.base_deg, point.inclination_deg
+        )
+
+    acquisition = _acquisition(args)
+    controller = None
+    mtms_pulse = None
+    store = _new_store(args, "circular")
+    try:
+        controller = SerialMotorController(
+            port=_require_value(args, "serial_port", "stage serial port"),
+            baudrate=args.serial_baud,
+            timeout_s=args.serial_timeout,
+            movement_settling_s=args.settling_time,
+        )
+        controller.ping()
+        positioner = CalibratedAngularPositioner(
+            controller, config.angular_calibration
+        )
+        if args.center_first:
+            positioner.center()
+        mtms_pulse = _mtms_if_requested(args)
+        service = _service(args, acquisition, controller, mtms_pulse)
+        for point, measurement in CircularMapping(positioner, service).run(points):
+            store.append(
+                MeasurementLocation(
+                    mode="circular",
+                    label=f"{point.row},{point.column}",
+                    base_deg=point.base_deg,
+                    inclination_deg=point.inclination_deg,
+                ),
+                measurement,
+            )
+        print(f"Circular map completed: {store.run_directory}")
+        return 0
+    finally:
+        try:
+            if mtms_pulse is not None:
+                mtms_pulse.close()
+        finally:
+            try:
+                acquisition.close()
+            finally:
+                if controller is not None:
+                    controller.close()
+
+
+def show_config(args: argparse.Namespace) -> int:
+    print(json.dumps(args.project_config.to_dict(), indent=2, sort_keys=True))
+    return 0
+
+
+def _validate_runtime_settings(args: argparse.Namespace) -> None:
+    if args.pulse_source == "mtms_api":
+        MtmsSingleChannelSettings(
+            channel=args.mtms_channel,
+            allowed_channels=tuple(args.mtms_allowed_channels),
+            target_voltage_v=args.mtms_target_voltage,
+            maximum_target_voltage_v=args.mtms_maximum_target_voltage,
+            reverse_polarity=args.mtms_reverse_polarity,
+            trigger_out_port=args.mtms_trigger_out_port,
+            trigger_out_duration_us=args.mtms_trigger_out_duration,
+            schedule_lead_s=args.mtms_schedule_lead,
+            minimum_inter_pulse_interval_s=args.mtms_minimum_interval,
+            discharge_after_pulse=args.mtms_discharge_after_pulse,
+        )
+        MtmsSingleChannelClient.validate_environment()
+    AcquisitionSettings(
+        repetitions=args.repetitions,
+        interval_s=args.repetition_interval,
+        trigger_timeout_s=args.trigger_timeout,
+        buffer_timeout_s=args.buffer_timeout,
+    )
+    if args.decimation <= 0:
+        raise ValueError("Decimation must be positive.")
+    if not 1 <= args.rp_port <= 65535:
+        raise ValueError("Red Pitaya port must be between 1 and 65535.")
+    if args.pulse_duration <= 0:
+        raise ValueError("Pulse duration must be positive.")
+    if args.serial_baud <= 0 or args.serial_timeout < 0:
+        raise ValueError("Serial baud rate and timeout are invalid.")
+
+
+def _add_acquisition_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--rp-ip")
+    parser.add_argument("--rp-port", type=int)
+    parser.add_argument("--decimation", type=int)
+    parser.add_argument("--trigger-source")
+    parser.add_argument("--trigger-delay", type=int)
+    parser.add_argument("--trigger-timeout", type=float)
+    parser.add_argument("--buffer-timeout", type=float)
+    parser.add_argument("--repetitions", type=int)
+    parser.add_argument("--repetition-interval", type=float)
+    parser.add_argument("--high-voltage", action=argparse.BooleanOptionalAction)
+    parser.add_argument(
+        "--pulse-source", choices=("serial", "redpitaya", "mtms_api")
+    )
+    parser.add_argument("--pulse-pin")
+    parser.add_argument("--pulse-duration", type=float)
+    parser.add_argument("--mtms-channel", type=int)
+    parser.add_argument("--mtms-allowed-channels", type=int, nargs="+")
+    parser.add_argument("--mtms-target-voltage", type=float)
+    parser.add_argument("--mtms-maximum-target-voltage", type=float)
+    parser.add_argument(
+        "--mtms-reverse-polarity", action=argparse.BooleanOptionalAction
+    )
+    parser.add_argument("--mtms-trigger-out-port", type=int)
+    parser.add_argument("--mtms-trigger-out-duration", type=int)
+    parser.add_argument("--mtms-schedule-lead", type=float)
+    parser.add_argument("--mtms-minimum-interval", type=float)
+    parser.add_argument(
+        "--mtms-discharge-after-pulse", action=argparse.BooleanOptionalAction
+    )
+    parser.add_argument("--output")
+    parser.add_argument("--save-waveforms", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--settling-time", type=float)
+    parser.add_argument("--confirm-hardware")
+
+
+def _add_serial_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--serial-port")
+    parser.add_argument("--serial-baud", type=int)
+    parser.add_argument("--serial-timeout", type=float)
+
+
+def _add_robot_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--robot-ip")
+    parser.add_argument("--movement-timeout", type=float)
+    parser.add_argument("--use-new-api", action=argparse.BooleanOptionalAction)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="efield-control")
+    parser.add_argument("--config", default="config/default.toml")
+    parser.add_argument("--env-file", default=".env")
+    parser.add_argument(
+        "--angular-calibration",
+        default="config/calibration/angular_stage.toml",
+    )
+    parser.add_argument(
+        "--sensor-calibration",
+        default="config/calibration/sensor_pose.toml",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    commands.add_parser("show-config", help="Print the resolved configuration").set_defaults(
+        handler=show_config
+    )
+
+    center = commands.add_parser("center", help="Center the sensor with an Elfin robot")
+    _add_acquisition_arguments(center)
+    _add_serial_arguments(center)
+    _add_robot_arguments(center)
+    center.add_argument("--initial-step", type=float)
+    center.add_argument("--minimum-step", type=float)
+    center.add_argument("--step-reduction", type=float)
+    center.add_argument("--relative-improvement", type=float)
+    center.add_argument("--max-iterations", type=int)
+    center.add_argument("--max-radius", type=float)
+    center.set_defaults(handler=run_center)
+
+    planar = commands.add_parser("planar", help="Run a planar map with an Elfin robot")
+    _add_acquisition_arguments(planar)
+    _add_serial_arguments(planar)
+    _add_robot_arguments(planar)
+    planar.add_argument("--x-start", type=float)
+    planar.add_argument("--x-stop", type=float)
+    planar.add_argument("--x-step", type=float)
+    planar.add_argument("--y-start", type=float)
+    planar.add_argument("--y-stop", type=float)
+    planar.add_argument("--y-step", type=float)
+    planar.set_defaults(handler=run_planar)
+
+    circular = commands.add_parser("circular", help="Run a serial-controlled angular map")
+    _add_acquisition_arguments(circular)
+    _add_serial_arguments(circular)
+    circular.add_argument("--center-first", action=argparse.BooleanOptionalAction)
+    circular.add_argument("--base-start", type=float)
+    circular.add_argument("--base-stop", type=float)
+    circular.add_argument("--base-step", type=float)
+    circular.add_argument("--inclination-start", type=float)
+    circular.add_argument("--inclination-stop", type=float)
+    circular.add_argument("--inclination-step", type=float)
+    circular.set_defaults(handler=run_circular)
+    return parser
+
+
+def _set_missing(args: argparse.Namespace, attribute: str, value: Any) -> None:
+    if hasattr(args, attribute) and getattr(args, attribute) is None:
+        setattr(args, attribute, value)
+
+
+def apply_project_config(args: argparse.Namespace, config: ProjectConfig) -> None:
+    values = {
+        "rp_ip": config.hardware.red_pitaya_host,
+        "rp_port": config.hardware.red_pitaya_port,
+        "robot_ip": config.hardware.robot_host,
+        "serial_port": config.hardware.stage_serial_port,
+        "serial_baud": config.hardware.stage_serial_baud,
+        "serial_timeout": config.hardware.stage_serial_timeout_s,
+        "decimation": config.acquisition.decimation,
+        "trigger_source": config.acquisition.trigger_source,
+        "trigger_delay": config.acquisition.trigger_delay,
+        "trigger_timeout": config.acquisition.trigger_timeout_s,
+        "buffer_timeout": config.acquisition.buffer_timeout_s,
+        "repetitions": config.acquisition.repetitions,
+        "repetition_interval": config.acquisition.repetition_interval_s,
+        "high_voltage": config.acquisition.high_voltage,
+        "pulse_source": config.pulse.source,
+        "pulse_pin": config.pulse.pin,
+        "pulse_duration": config.pulse.duration_s,
+        "mtms_channel": config.mtms.channel,
+        "mtms_allowed_channels": config.mtms.allowed_channels,
+        "mtms_target_voltage": config.mtms.target_voltage_v,
+        "mtms_maximum_target_voltage": config.mtms.maximum_target_voltage_v,
+        "mtms_reverse_polarity": config.mtms.reverse_polarity,
+        "mtms_trigger_out_port": config.mtms.trigger_out_port,
+        "mtms_trigger_out_duration": config.mtms.trigger_out_duration_us,
+        "mtms_schedule_lead": config.mtms.schedule_lead_s,
+        "mtms_minimum_interval": config.mtms.minimum_inter_pulse_interval_s,
+        "mtms_discharge_after_pulse": config.mtms.discharge_after_pulse,
+        "movement_timeout": config.robot.movement_timeout_s,
+        "settling_time": config.robot.settling_time_s,
+        "use_new_api": config.robot.use_new_api,
+        "initial_step": config.centering.initial_step_mm,
+        "minimum_step": config.centering.minimum_step_mm,
+        "step_reduction": config.centering.step_reduction,
+        "relative_improvement": config.centering.relative_improvement,
+        "max_iterations": config.centering.max_iterations,
+        "max_radius": config.centering.max_radius_mm,
+        "x_start": config.planar_mapping.x_start_mm,
+        "x_stop": config.planar_mapping.x_stop_mm,
+        "x_step": config.planar_mapping.x_step_mm,
+        "y_start": config.planar_mapping.y_start_mm,
+        "y_stop": config.planar_mapping.y_stop_mm,
+        "y_step": config.planar_mapping.y_step_mm,
+        "base_start": config.circular_mapping.base_start_deg,
+        "base_stop": config.circular_mapping.base_stop_deg,
+        "base_step": config.circular_mapping.base_step_deg,
+        "inclination_start": config.circular_mapping.inclination_start_deg,
+        "inclination_stop": config.circular_mapping.inclination_stop_deg,
+        "inclination_step": config.circular_mapping.inclination_step_deg,
+        "center_first": config.circular_mapping.center_before_mapping,
+        "output": config.storage.output_directory,
+        "save_waveforms": config.storage.save_waveforms,
+    }
+    for attribute, value in values.items():
+        _set_missing(args, attribute, value)
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        config = load_project_config(
+            config_path=args.config,
+            env_path=args.env_file,
+            angular_calibration_path=args.angular_calibration,
+            sensor_calibration_path=args.sensor_calibration,
+        )
+        args.project_config = config
+        apply_project_config(args, config)
+        return int(args.handler(args))
+    except KeyboardInterrupt:
+        print("Operation interrupted by the user.", file=sys.stderr)
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

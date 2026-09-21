@@ -1,0 +1,29 @@
+# Calibration between the sensor, robot tool center point (TCP), and coil.
+# Translation values are millimetres; rotation values are degrees.
+
+[metadata]
+# Unique name and date used to identify this calibration in saved run data.
+calibration_id = "sensor-pose-default"
+calibrated_at = "2026-09-21"
+
+[sensor_to_tcp]
+# Sensor pose relative to the robot TCP. These values are currently recorded
+# for traceability but are not yet applied as a full rigid transform. Update
+# them after the final sensor mounting geometry has been measured.
+x_mm = 0.0
+y_mm = 0.0
+z_mm = 0.0
+rx_deg = 0.0
+ry_deg = 0.0
+rz_deg = 0.0
+
+[coil_center_guess]
+# Offset added directly to the robot's current pose before feedback centering
+# starts. Use it as a repeatable coarse estimate of the coil center. Keep all
+# values at zero until the coordinate signs and orientation have been checked.
+x_mm = 0.0
+y_mm = 0.0
+z_mm = 0.0
+rx_deg = 0.0
+ry_deg = 0.0
+rz_deg = 0.0
