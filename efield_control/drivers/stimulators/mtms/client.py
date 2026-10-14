@@ -1,3 +1,5 @@
+"""Use the existing MTMSApi to operate one channel and its synchronization marker."""
+
 from __future__ import annotations
 
 import time
@@ -99,6 +101,11 @@ class MtmsSingleChannelClient:
         return self._import_vendor_api()
 
     def connect(self) -> None:
+        """Instantiate the API, start the device, and open the operating session.
+
+        The external library handles communication; this client does not prepare
+        ROS, import paths, or Python environment settings.
+        """
         if self._api is not None:
             return
 
@@ -115,10 +122,12 @@ class MtmsSingleChannelClient:
             raise
 
     def trigger(self) -> None:
+        """Charge the channel, schedule stimulation and its marker, and wait for completion."""
         api = self._require_api()
         self._check_rate_limit()
         condition = self._execution_condition
 
+        # target_voltage is the capacitor voltage in V, rather than intensity in percent.
         api.send_charge(
             channel=self.settings.channel,
             target_voltage=self.settings.target_voltage_v,
@@ -131,6 +140,7 @@ class MtmsSingleChannelClient:
 
         waveform = api.get_default_waveform(self.settings.channel)
         scheduled_time = api.get_time() + self.settings.schedule_lead_s
+        # Stimulate the coil at the scheduled time on the mTMS device clock.
         api.send_pulse(
             channel=self.settings.channel,
             waveform=waveform,
@@ -138,6 +148,7 @@ class MtmsSingleChannelClient:
             time=scheduled_time,
             reverse_polarity=self.settings.reverse_polarity,
         )
+        # Mark the same scheduled time on the Red Pitaya trigger input.
         api.send_trigger_out(
             port=self.settings.trigger_out_port,
             duration_us=self.settings.trigger_out_duration_us,
@@ -151,6 +162,7 @@ class MtmsSingleChannelClient:
             self._discharge()
 
     def _check_rate_limit(self) -> None:
+        """Reject a pulse requested too soon without automatically waiting out the interval."""
         if self._last_pulse_at is None:
             return
         elapsed = self._monotonic() - self._last_pulse_at
@@ -162,6 +174,7 @@ class MtmsSingleChannelClient:
             )
 
     def _discharge(self) -> None:
+        """Request channel discharge to 0 V and wait for the API to confirm completion."""
         if self._api is None or not self._charged:
             return
         self._api.send_discharge(
@@ -178,6 +191,7 @@ class MtmsSingleChannelClient:
         return self._api
 
     def close(self) -> None:
+        """Attempt discharge and session/device shutdown, propagating the first error."""
         first_error: BaseException | None = None
         try:
             self._discharge()

@@ -1,3 +1,5 @@
+"""Save experiment measurements and metadata without commanding equipment."""
+
 from __future__ import annotations
 
 import csv
@@ -11,6 +13,7 @@ from .domain import Measurement
 
 @dataclass(frozen=True, slots=True)
 class MeasurementLocation:
+    """Identify the measured point using Cartesian coordinates or logical angles."""
     mode: str
     label: str
     x_mm: float | None = None
@@ -57,6 +60,7 @@ class CsvRunStore:
             csv.DictWriter(stream, fieldnames=self.SUMMARY_FIELDS).writeheader()
 
     def append(self, location: MeasurementLocation, measurement: Measurement) -> Path:
+        """Write a summary.csv row and, if enabled, the waveform in a separate CSV."""
         index = self._next_index
         self._next_index += 1
         waveform_file: Path | None = None
@@ -86,6 +90,7 @@ class CsvRunStore:
         return waveform_file or self.summary_file
 
     def write_json(self, filename: str, data: object) -> Path:
+        """Record metadata, such as resolved_config.json, in this run directory."""
         path = self.run_directory / filename
         with path.open("w", encoding="utf-8") as stream:
             json.dump(data, stream, indent=2, sort_keys=True)
@@ -94,6 +99,7 @@ class CsvRunStore:
 
     @staticmethod
     def _write_waveform(path: Path, measurement: Measurement) -> None:
+        # Export time in microseconds relative to the start of the sample array.
         waveform = measurement.waveform
         count = min(len(waveform.channel_1_v), len(waveform.channel_2_v))
         with path.open("w", newline="", encoding="utf-8") as stream:

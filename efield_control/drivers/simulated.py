@@ -1,3 +1,5 @@
+"""Equipment substitutes for running algorithms without accessing hardware."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,6 +9,7 @@ from efield_control.domain import Pose, Waveform
 
 
 class SimulatedRobot:
+    """Keep the pose in memory; move_to only updates this value."""
     def __init__(self, initial_pose: Pose) -> None:
         self.pose = initial_pose
         self.connected = False
@@ -30,6 +33,7 @@ class SimulatedRobot:
 
 
 class SimulatedPulse:
+    """Accept fire without generating a physical pulse."""
     def fire(self) -> None:
         return None
 
@@ -45,6 +49,7 @@ class GaussianAcquisition:
     sample_rate_hz: float = 15_625_000.0
 
     def arm(self) -> None:
+        # The waveform is calculated on read; there is no hardware or buffer to arm.
         return None
 
     def wait_for_trigger(self, timeout_s: float) -> None:
@@ -54,6 +59,7 @@ class GaussianAcquisition:
         return None
 
     def read_waveform(self) -> Waveform:
+        """Generate two channels whose amplitude increases as the pose approaches the center."""
         dx = self.robot.pose.x_mm - self.center_x_mm
         dy = self.robot.pose.y_mm - self.center_y_mm
         amplitude = exp(-(dx * dx + dy * dy) / (2 * self.sigma_mm**2))

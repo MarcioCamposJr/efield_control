@@ -1,3 +1,8 @@
+"""Example with its own main: run python -m examples.simulate_centering.
+
+Use only simulators and local parameters without reading CLI configuration files.
+"""
+
 from efield_control.acquisition import AcquisitionService
 from efield_control.centering import CenteringSettings, SensorCentering
 from efield_control.domain import Pose
@@ -10,6 +15,7 @@ from efield_control.workflows import CenterSensorWorkflow
 
 
 def main() -> None:
+    # Assemble the same components as a real experiment using simulated drivers.
     robot = SimulatedRobot(Pose(0, 0, 10))
     robot.connect()
     device = GaussianAcquisition(robot, center_x_mm=3.0, center_y_mm=-2.0)
@@ -18,6 +24,7 @@ def main() -> None:
         CenteringSettings(initial_step_mm=2.0, minimum_step_mm=0.5)
     )
 
+    # The workflow turns each suggested position into movement and measurement.
     result = CenterSensorWorkflow(robot, acquisition, algorithm).run()
     print(
         f"Center: X={result.x_mm:.2f} mm, Y={result.y_mm:.2f} mm, "

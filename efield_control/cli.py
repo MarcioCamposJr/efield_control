@@ -1,3 +1,10 @@
+"""Experiment entry point: python -m efield_control.cli <command>.
+
+main reads arguments and files; run_center/run_planar/run_circular assemble
+the drivers, execute the experiment, and save results. The algorithms can
+also be used from custom scripts without going through this CLI.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -47,6 +54,11 @@ def inclusive_range(start: float, stop: float, step: float) -> tuple[float, ...]
 
 
 def _require_confirmation(args: argparse.Namespace) -> None:
+    """Require MOVE_AND_FIRE to authorize the entire operation with real hardware.
+
+    This option does not test equipment or validate physical limits. It blocks
+    motion and firing when explicit authorization is missing.
+    """
     if args.confirm_hardware != HARDWARE_CONFIRMATION:
         raise SystemExit(
             "Operation blocked. Review all limits and use "
@@ -63,6 +75,7 @@ def _require_value(args: argparse.Namespace, attribute: str, source: str) -> Any
 
 
 def _acquisition(args: argparse.Namespace) -> RedPitayaAcquisition:
+    """Create the CH1/CH2 acquisition device and open its Red Pitaya SCPI connection."""
     host = _require_value(args, "rp_ip", "Red Pitaya host")
     return RedPitayaAcquisition(
         RedPitayaSettings(
@@ -82,11 +95,13 @@ def _service(
     serial_controller: SerialMotorController | None,
     mtms_pulse: MtmsApiPulse | None = None,
 ) -> AcquisitionService:
+    """Combine Red Pitaya acquisition with the selected pulse source."""
     if args.pulse_source == "serial":
         if serial_controller is None:
             raise ValueError("The serial pulse source requires a serial port.")
         pulse = serial_controller
     elif args.pulse_source == "redpitaya":
+        # Acquisition and digital pulses share the same Red Pitaya SCPI connection.
         pulse = RedPitayaDigitalPulse(
             acquisition.client,
             pin=args.pulse_pin,
@@ -109,6 +124,7 @@ def _service(
 
 
 def _serial_if_requested(args: argparse.Namespace) -> SerialMotorController | None:
+    """Open serial communication for Arduino firing in center/planar if selected."""
     if args.pulse_source != "serial":
         return None
     port = _require_value(args, "serial_port", "stage serial port")
@@ -123,6 +139,7 @@ def _serial_if_requested(args: argparse.Namespace) -> SerialMotorController | No
 
 
 def _mtms_if_requested(args: argparse.Namespace) -> MtmsApiPulse | None:
+    """Create the mTMS client and start its session only when mtms_api is selected."""
     if args.pulse_source != "mtms_api":
         return None
     client = MtmsSingleChannelClient(
@@ -145,6 +162,7 @@ def _mtms_if_requested(args: argparse.Namespace) -> MtmsApiPulse | None:
 
 
 def _new_store(args: argparse.Namespace, run_name: str) -> CsvRunStore:
+    """Create the results directory and record the parameters for this run."""
     store = CsvRunStore(
         args.output,
         run_name,
@@ -164,6 +182,7 @@ def _new_store(args: argparse.Namespace, run_name: str) -> CsvRunStore:
 
 
 def run_center(args: argparse.Namespace) -> int:
+    """Center the sensor with Elfin, measuring positions suggested by the algorithm."""
     _require_confirmation(args)
     algorithm = SensorCentering(
         CenteringSettings(
@@ -188,12 +207,14 @@ def run_center(args: argparse.Namespace) -> int:
     robot_connected = False
     store = _new_store(args, "centering")
     try:
+        # Connect the actuators and assemble acquisition before starting the search.
         robot.connect()
         robot_connected = True
         serial_controller = _serial_if_requested(args)
         mtms_pulse = _mtms_if_requested(args)
         service = _service(args, acquisition, serial_controller, mtms_pulse)
         def save_sample(sample) -> None:
+            # The algorithm reports each sample; the CLI handles writing it to disk.
             store.append(
                 MeasurementLocation(
                     mode="centering",
@@ -225,6 +246,7 @@ def run_center(args: argparse.Namespace) -> int:
                 pass
         raise
     finally:
+        # Close connections even when the experiment fails or is interrupted.
         if robot_connected:
             robot.disconnect()
         try:
@@ -239,6 +261,7 @@ def run_center(args: argparse.Namespace) -> int:
 
 
 def run_planar(args: argparse.Namespace) -> int:
+    """Traverse X/Y offsets with Elfin and save the measurement at each point."""
     _require_confirmation(args)
     _validate_runtime_settings(args)
     points = tuple(
@@ -265,6 +288,7 @@ def run_planar(args: argparse.Namespace) -> int:
         mtms_pulse = _mtms_if_requested(args)
         service = _service(args, acquisition, serial_controller, mtms_pulse)
         origin = robot.current_pose()
+        # The map yields one point at a time; this loop saves each result.
         for point, pose, measurement in PlanarMapping(robot, service).run(origin, points):
             store.append(
                 MeasurementLocation(
@@ -300,6 +324,7 @@ def run_planar(args: argparse.Namespace) -> int:
 
 
 def run_circular(args: argparse.Namespace) -> int:
+    """Traverse Arduino stage angles and save the measurement at each point."""
     _require_confirmation(args)
     _validate_runtime_settings(args)
     config: ProjectConfig = args.project_config
@@ -314,6 +339,7 @@ def run_circular(args: argparse.Namespace) -> int:
         )
     )
     for point in points:
+        # Validate the full calibrated path before opening connections or moving servos.
         config.angular_calibration.commands_for(
             point.base_deg, point.inclination_deg
         )
@@ -323,6 +349,7 @@ def run_circular(args: argparse.Namespace) -> int:
     mtms_pulse = None
     store = _new_store(args, "circular")
     try:
+        # Serial is needed for the servos even when mTMS generates the pulse.
         controller = SerialMotorController(
             port=_require_value(args, "serial_port", "stage serial port"),
             baudrate=args.serial_baud,
@@ -362,11 +389,13 @@ def run_circular(args: argparse.Namespace) -> int:
 
 
 def show_config(args: argparse.Namespace) -> int:
+    """Display the resolved configuration as JSON without connecting to equipment."""
     print(json.dumps(args.project_config.to_dict(), indent=2, sort_keys=True))
     return 0
 
 
 def _validate_runtime_settings(args: argparse.Namespace) -> None:
+    """Validate parameters and required imports without preparing the host environment."""
     if args.pulse_source == "mtms_api":
         MtmsSingleChannelSettings(
             channel=args.mtms_channel,
@@ -446,6 +475,7 @@ def _add_robot_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Define commands and associate each with the function that runs the operation."""
     parser = argparse.ArgumentParser(prog="efield-control")
     parser.add_argument("--config", default="config/default.toml")
     parser.add_argument("--env-file", default=".env")
@@ -473,6 +503,7 @@ def build_parser() -> argparse.ArgumentParser:
     center.add_argument("--relative-improvement", type=float)
     center.add_argument("--max-iterations", type=int)
     center.add_argument("--max-radius", type=float)
+    # handler stores the function that main calls when the command is center.
     center.set_defaults(handler=run_center)
 
     planar = commands.add_parser("planar", help="Run a planar map with an Elfin robot")
@@ -507,6 +538,7 @@ def _set_missing(args: argparse.Namespace, attribute: str, value: Any) -> None:
 
 
 def apply_project_config(args: argparse.Namespace, config: ProjectConfig) -> None:
+    """Fill omitted arguments from configuration, preserving explicit CLI values."""
     values = {
         "rp_ip": config.hardware.red_pitaya_host,
         "rp_port": config.hardware.red_pitaya_port,
@@ -565,6 +597,11 @@ def apply_project_config(args: argparse.Namespace, config: ProjectConfig) -> Non
 
 
 def main(argv: Iterable[str] | None = None) -> int:
+    """Shared entry point for the Python module and the efield-control executable.
+
+    argv allows calling main(["show-config"]) from a script. When omitted,
+    argparse uses terminal arguments; a subcommand is required.
+    """
     args = build_parser().parse_args(argv)
     try:
         config = load_project_config(
@@ -575,6 +612,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         )
         args.project_config = config
         apply_project_config(args, config)
+        # handler is show_config, run_center, run_planar, or run_circular.
         return int(args.handler(args))
     except KeyboardInterrupt:
         print("Operation interrupted by the user.", file=sys.stderr)

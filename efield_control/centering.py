@@ -1,3 +1,5 @@
+"""Choose X/Y positions that increase the signal independently of equipment."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -54,7 +56,11 @@ SampleObserver = Callable[[CenteringSample], None]
 
 
 class SensorCentering:
-    """Cross-pattern local search that maximizes combined channel magnitude."""
+    """Search a cross pattern to maximize sqrt(Vpp(CH1)^2 + Vpp(CH2)^2).
+
+    The workflow supplies evaluate(x, y), which moves the sensor and measures.
+    observer receives samples for logging without choosing the center.
+    """
 
     def __init__(self, settings: CenteringSettings | None = None) -> None:
         self.settings = settings or CenteringSettings()
@@ -117,6 +123,7 @@ class SensorCentering:
                     observer,
                 )
 
+            # Compare the current center with neighbors inside the maximum radius.
             best = max(candidates, key=lambda item: item[3].magnitude_v)
             improvement = self._relative_improvement(
                 current.magnitude_v, best[3].magnitude_v
@@ -136,6 +143,7 @@ class SensorCentering:
                 self._record(accepted, samples, observer)
                 continue
 
+            # Without sufficient improvement, reduce the step or stop at the minimum.
             if step <= cfg.minimum_step_mm:
                 break
             step = max(cfg.minimum_step_mm, step * cfg.step_reduction)

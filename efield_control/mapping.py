@@ -1,3 +1,5 @@
+"""Generate serpentine paths and measure the sensor at each position."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,6 +29,7 @@ class AngularPoint:
 def planar_serpentine(
     x_offsets_mm: Iterable[float], y_offsets_mm: Iterable[float]
 ) -> Iterator[PlanarPoint]:
+    """Generate X/Y offsets in mm, alternating the X direction between rows."""
     xs = tuple(float(value) for value in x_offsets_mm)
     ys = tuple(float(value) for value in y_offsets_mm)
     if not xs or not ys:
@@ -41,6 +44,7 @@ def planar_serpentine(
 def circular_serpentine(
     base_angles_deg: Iterable[float], inclination_angles_deg: Iterable[float]
 ) -> Iterator[AngularPoint]:
+    """Generate absolute logical base/inclination angles in degrees."""
     bases = tuple(float(value) for value in base_angles_deg)
     inclinations = tuple(float(value) for value in inclination_angles_deg)
     if not bases or not inclinations:
@@ -55,6 +59,7 @@ def circular_serpentine(
 
 
 class PlanarMapping:
+    """Move the robot through X/Y offsets from the origin, preserving Z and orientation."""
     def __init__(self, robot: CartesianRobot, acquisition: AcquisitionService) -> None:
         self.robot = robot
         self.acquisition = acquisition
@@ -66,11 +71,14 @@ class PlanarMapping:
     ) -> Iterator[tuple[PlanarPoint, Pose, Measurement]]:
         for point in points:
             target = origin.translated(point.dx_mm, point.dy_mm)
+            # The driver waits for movement completion before the service fires and measures.
             self.robot.move_to(target)
+            # yield passes each result to the CLI, which saves it before continuing.
             yield point, target, self.acquisition.measure()
 
 
 class CircularMapping:
+    """Move the angular stage and measure; the positioner applies calibration."""
     def __init__(
         self,
         positioner: AngularPositioner,
@@ -83,5 +91,6 @@ class CircularMapping:
         self, points: Iterable[AngularPoint]
     ) -> Iterator[tuple[AngularPoint, Measurement]]:
         for point in points:
+            # In the CLI, positioner converts logical angles into servo commands.
             self.positioner.move_to(point.base_deg, point.inclination_deg)
             yield point, self.acquisition.measure()

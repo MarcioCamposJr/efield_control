@@ -1,3 +1,5 @@
+"""Shared data: poses in millimeters/degrees and electrical signals in volts."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,6 +20,7 @@ class Pose:
     rz_deg: float = 0.0
 
     def with_xy(self, x_mm: float, y_mm: float) -> "Pose":
+        """Create a pose with absolute X/Y coordinates, preserving Z and orientation."""
         return Pose(
             x_mm=x_mm,
             y_mm=y_mm,
@@ -28,6 +31,7 @@ class Pose:
         )
 
     def translated(self, dx_mm: float = 0.0, dy_mm: float = 0.0) -> "Pose":
+        """Apply X/Y offsets relative to the pose without sending robot commands."""
         return self.with_xy(self.x_mm + dx_mm, self.y_mm + dy_mm)
 
     def as_list(self) -> list[float]:
@@ -43,6 +47,7 @@ class Pose:
 
 @dataclass(frozen=True, slots=True)
 class Waveform:
+    """Samples from both channels in volts, with the sampling rate in Hz."""
     channel_1_v: tuple[float, ...]
     channel_2_v: tuple[float, ...]
     sample_rate_hz: float
@@ -76,6 +81,7 @@ class Waveform:
 
     @property
     def magnitude_v(self) -> float:
+        """Combine peak-to-peak values without converting them to electric field in V/m."""
         return hypot(self.p2p_ch1_v, self.p2p_ch2_v)
 
 
@@ -91,6 +97,7 @@ class Measurement:
 
     @classmethod
     def aggregate(cls, waveforms: Iterable[Waveform]) -> "Measurement":
+        """Use measurement medians and keep the waveform from the last repetition."""
         collected = tuple(waveforms)
         if not collected:
             raise ValueError("At least one acquisition is required.")

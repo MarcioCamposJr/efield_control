@@ -1,3 +1,10 @@
+"""TCP transport and Elfin protocol commands.
+
+ElfinRobotAdapter calls this layer to query poses and request movements.
+An OK response confirms command acceptance; the adapter polls the robot state
+to wait for movement completion before measuring.
+"""
+
 import time
 from enum import Enum
 from socket import AF_INET, SOCK_STREAM, socket

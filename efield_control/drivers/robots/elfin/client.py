@@ -1,3 +1,9 @@
+"""Group Elfin operations on top of ElfinConnection.
+
+Experiments use ElfinRobotAdapter to convert poses and wait for movements.
+This client also provides lower-level operations for other uses.
+"""
+
 from time import sleep
 
 from .connection import (

@@ -1,5 +1,8 @@
-"""
-Provides SCPI access to Red Pitaya from host computer.
+"""Provides SCPI access to Red Pitaya from host computer.
+
+RedPitayaAcquisition uses tx_txt to send commands and rx_txt to read responses.
+This layer transports text over the socket; AcquisitionService and adapter.py
+coordinate the sequence of preparing acquisition, firing, and reading.
 """
 
 import socket

@@ -1,14 +1,12 @@
+"""Expose the mTMS client as a pulse source for AcquisitionService."""
+
 from __future__ import annotations
 
 from typing import Protocol
 
 
 class MtmsApiClient(Protocol):
-    """Internal contract implemented by the future MTMSApi wrapper.
-
-    The concrete implementation will translate the vendor's ROS-backed API
-    into these methods after its firing and shutdown semantics are confirmed.
-    """
+    """Contract implemented by MtmsSingleChannelClient: connect, trigger, and close."""
 
     def connect(self) -> None: ...
 
@@ -25,16 +23,19 @@ class MtmsApiPulse:
         self._connected = False
 
     def connect(self) -> None:
+        """Delegate mTMS device and session initialization to the client."""
         if not self._connected:
             self._client.connect()
             self._connected = True
 
     def fire(self) -> None:
+        """Translate the acquisition service fire call into the mTMS client trigger call."""
         if not self._connected:
             raise RuntimeError("The mTMS API client is not connected.")
         self._client.trigger()
 
     def close(self) -> None:
+        """Delegate discharge and session shutdown to the mTMS client."""
         if self._connected:
             self._client.close()
             self._connected = False

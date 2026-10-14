@@ -1,3 +1,10 @@
+"""Equipment contracts used by the algorithms.
+
+Protocol describes expected methods without connecting or commanding hardware.
+A class satisfies a contract by providing its methods; inheritance is optional.
+Concrete implementations live in drivers/.
+"""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -6,7 +13,7 @@ from .domain import Pose, Waveform
 
 
 class CartesianRobot(Protocol):
-    """Contract implemented by Elfin and, in the future, Dobot."""
+    """Robot that moves the sensor to a Cartesian pose in mm and degrees."""
 
     def connect(self) -> None: ...
 
@@ -20,7 +27,7 @@ class CartesianRobot(Protocol):
 
 
 class AngularPositioner(Protocol):
-    """Circular-stage controller independent of its electrical protocol."""
+    """Stage that positions the base and inclination using angles in degrees."""
 
     def center(self) -> None: ...
 
@@ -28,13 +35,18 @@ class AngularPositioner(Protocol):
 
 
 class PulseSource(Protocol):
-    """Device that requests the pulse used to produce a measurement."""
+    """Source that requests a pulse: mTMS, Arduino, Red Pitaya, or a simulator."""
 
     def fire(self) -> None: ...
 
 
 class AcquisitionDevice(Protocol):
-    """Two-channel acquisition device synchronized by a trigger."""
+    """Two-channel acquisition device that arms, waits for a trigger, and reads a waveform.
+
+    arm prepares capture without firing the stimulator. wait_for_trigger waits
+    for trigger detection; wait_until_ready waits for the buffer to fill.
+    read_waveform returns channel samples in volts and the sampling rate in Hz.
+    """
 
     def arm(self) -> None: ...
 

@@ -1,3 +1,5 @@
+"""Coordinate sensor acquisition; drivers execute the hardware commands."""
+
 from __future__ import annotations
 
 import time
@@ -22,7 +24,11 @@ class AcquisitionSettings:
 
 
 class AcquisitionService:
-    """Coordinates the safe order: arm, fire, wait, and read."""
+    """Combine an acquisition device (usually Red Pitaya) with a pulse source.
+
+    device handles arm, wait, and read calls; pulse_source handles fire.
+    Simulated equipment can provide the same methods.
+    """
 
     def __init__(
         self,
@@ -35,13 +41,18 @@ class AcquisitionService:
         self.settings = settings or AcquisitionSettings()
 
     def acquire_once(self) -> Waveform:
+        """Read both channels from a single synchronized acquisition."""
+        # Prepare Red Pitaya to capture the signal on the next trigger.
         self._device.arm()
+        # Request a pulse from mTMS, Arduino, or the Red Pitaya digital output.
         self._pulse_source.fire()
+        # Poll the acquisition device for trigger detection and a filled buffer.
         self._device.wait_for_trigger(self.settings.trigger_timeout_s)
         self._device.wait_until_ready(self.settings.buffer_timeout_s)
         return self._device.read_waveform()
 
     def measure(self) -> Measurement:
+        """Repeat acquisition at the same position and aggregate measurements by median."""
         waveforms: list[Waveform] = []
         for index in range(self.settings.repetitions):
             waveforms.append(self.acquire_once())

@@ -1,3 +1,5 @@
+"""Red Pitaya SCPI commands for acquisition and digital trigger output."""
+
 from __future__ import annotations
 
 import time
@@ -24,6 +26,7 @@ class RedPitayaAcquisition:
     """Legacy SCPI client adapter that does not connect during module import."""
 
     def __init__(self, settings: RedPitayaSettings, client=None) -> None:
+        """Open the SCPI connection on construction unless a client is supplied."""
         self.settings = settings
         if client is None:
             from .scpi import scpi
@@ -44,23 +47,30 @@ class RedPitayaAcquisition:
         return self._client.rx_txt().strip()
 
     def arm(self) -> None:
+        """Prepare Red Pitaya to capture CH1/CH2 on the configured trigger."""
+        # Reset the previous acquisition before configuring the next capture.
         self._send("ACQ:RST")
         time.sleep(0.05)
         if self.settings.high_voltage:
+            # HV selects the channel input range; it does not energize mTMS.
             self._send("ACQ:SOUR1:GAIN HV")
             self._send("ACQ:SOUR2:GAIN HV")
         self._send("ACQ:DATA:FORMAT ASCII")
         self._send("ACQ:DATA:UNITS VOLTS")
+        # Decimation sets the sampling rate; delay positions the trigger in the buffer.
         self._send(f"ACQ:DEC {self.settings.decimation}")
         self._send(f"ACQ:TRIG:DLY {self.settings.trigger_delay}")
         self._send("ACQ:START")
         time.sleep(0.05)
+        # The default EXT_PE selects the rising edge of the external trigger.
         self._send(f"ACQ:TRIG {self.settings.trigger_source}")
 
     def wait_for_trigger(self, timeout_s: float) -> None:
+        """Poll Red Pitaya until TD indicates that the trigger was detected."""
         self._wait_for("ACQ:TRIG:STAT?", "TD", timeout_s, "trigger")
 
     def wait_until_ready(self, timeout_s: float) -> None:
+        """Wait until the Red Pitaya buffer is filled before reading the waveform."""
         self._wait_for("ACQ:TRIG:FILL?", "1", timeout_s, "buffer")
 
     def _wait_for(
@@ -74,6 +84,7 @@ class RedPitayaAcquisition:
         raise TimeoutError(f"Timed out while waiting for Red Pitaya {description}.")
 
     def read_waveform(self) -> Waveform:
+        """Read CH1 and CH2 buffers over SCPI and convert text responses into samples."""
         ch1 = self._parse(self._query("ACQ:SOUR1:DATA?"))
         ch2 = self._parse(self._query("ACQ:SOUR2:DATA?"))
         return Waveform.from_iterables(ch1, ch2, self.settings.sample_rate_hz)
@@ -90,6 +101,7 @@ class RedPitayaAcquisition:
         return values
 
     def close(self) -> None:
+        """Close the SCPI connection, which may also be shared with the digital output."""
         self._client.close()
 
 
@@ -115,6 +127,7 @@ class RedPitayaDigitalPulse:
         self._client.tx_txt(f"DIG:PIN {self.pin},{level}")
 
     def fire(self) -> None:
+        """Generate a pulse on the Red Pitaya digital pin connected to the stimulator."""
         self._write(False)
         time.sleep(0.01)
         self._write(True)

@@ -1,3 +1,5 @@
+"""Read project parameters and calibrations without reconfiguring the host environment."""
+
 from __future__ import annotations
 
 import os
@@ -204,6 +206,7 @@ class AxisCalibration:
         self.validate_command(self.center_command_deg)
 
     def command_for(self, relative_angle_deg: float) -> float:
+        """Convert a logical angle to physical degrees and check the servo limits."""
         command = (
             self.center_command_deg
             + self.direction * self.scale * float(relative_angle_deg)
@@ -284,6 +287,11 @@ def load_project_config(
     sensor_calibration_path: str | Path = "config/calibration/sensor_pose.toml",
     environ: Mapping[str, str] | None = None,
 ) -> ProjectConfig:
+    """Merge defaults, TOML, .env, and the existing environment in increasing priority.
+
+    Values are copied into project objects without writing process environment
+    variables. CLI arguments are applied later in cli.py.
+    """
     values = _deep_copy(DEFAULTS)
     toml_values = _read_toml(config_path)
     if "hardware" in toml_values:
@@ -294,6 +302,7 @@ def load_project_config(
     _deep_merge(values, toml_values)
 
     file_environment = _read_env_file(env_path)
+    # Use a copy to prioritize the environment without modifying os.environ.
     process_environment = dict(os.environ if environ is None else environ)
     file_environment.update(process_environment)
     _apply_environment(values, file_environment)
@@ -349,6 +358,7 @@ def _read_toml(path: str | Path) -> dict[str, Any]:
 
 
 def _read_env_file(path: str | Path) -> dict[str, str]:
+    """Read KEY=VALUE as text without running a shell or setting process variables."""
     file_path = Path(path)
     if not file_path.exists():
         return {}
