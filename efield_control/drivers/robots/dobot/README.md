@@ -21,6 +21,11 @@ already enabled, idle controller. It does not call `EnableRobot`, `ClearError`,
 `PowerOn`, `User`, `Tool`, or `SpeedFactor`. No host network configuration,
 environment setup, or installation is performed.
 
+Connection diagnostics may use `connect(require_ready=False)` to inspect a
+faulted or disabled controller and read `GetErrorID()`. Pose reads and movement
+still check readiness. State exceptions include mode, error, enable, and running
+flags so communication failures can be distinguished from controller alarms.
+
 ## Selection
 
 Select the robot and host only in `.env` (or existing process environment):

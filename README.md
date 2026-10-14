@@ -131,8 +131,11 @@ passed. One failure does not skip the other checks. All connections are closed.
 The exit code is 0 when every device passes, 1 if a device check fails, or 2 if
 configuration cannot be loaded.
 
-The robot check connects and reads its TCP pose (Dobot must already be enabled
-and ready). The microcontroller check sends only `PING` and requires `PONG`;
+The robot check connects and reads its TCP pose. If Dobot feedback reports an
+invalid operating state, it shows that TCP/feedback connected, prints the state
+flags, and reads `GetErrorID()` before closing. This remains `FAIL` because the
+robot is not ready to operate; alarms are never cleared automatically.
+The microcontroller check sends only `PING` and requires `PONG`;
 opening USB serial may reset the board, so a timed-out first PING is retried once.
 The Red Pitaya check reads `*IDN?` over SCPI. The mTMS check starts and closes
 the API device/session without charging or firing. API startup duration is

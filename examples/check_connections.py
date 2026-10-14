@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from typing import Callable
 
 from efield_control.configuration import ProjectConfig, load_project_config
-from efield_control.drivers.robots.dobot import DobotRobotAdapter
+from efield_control.drivers.robots.dobot import DobotRobotAdapter, DobotStateError
 from efield_control.drivers.robots.elfin import ElfinRobotAdapter
 from efield_control.drivers.serial_controller import SerialMotorController
 from efield_control.drivers.stimulators.mtms import (
@@ -67,8 +67,22 @@ def check_robot(config: ProjectConfig) -> str:
         robot = ElfinRobotAdapter(host, **settings, use_new_api=hardware.elfin_use_new_api)
 
     def check() -> str:
-        robot.connect()
-        pose = robot.current_pose()
+        if hardware.robot_type == "dobot":
+            # Keep communication open long enough to read alarms when not ready.
+            robot.connect(require_ready=False)
+        else:
+            robot.connect()
+        try:
+            pose = robot.current_pose()
+        except DobotStateError as error:
+            try:
+                alarms = robot.get_error_id()
+                detail = f"GetErrorID={alarms}"
+            except Exception as alarm_error:
+                detail = f"Alarm query failed: {alarm_error}"
+            raise RuntimeError(
+                f"TCP connections and feedback OK; controller not ready: {error} {detail}"
+            ) from error
         return (f"{hardware.robot_type}: TCP pose received "
                 f"(X={pose.x_mm:g}, Y={pose.y_mm:g}, Z={pose.z_mm:g} mm)")
 

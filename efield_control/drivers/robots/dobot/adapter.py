@@ -11,6 +11,10 @@ from .client import Dobot
 from .connection import DobotFeedback, RobotStatus
 
 
+class DobotStateError(RuntimeError):
+    """Communication succeeded, but controller state does not allow operation."""
+
+
 class DobotRobotAdapter:
     """Expose poses and blocking linear moves; the controller must already be enabled."""
 
@@ -44,25 +48,36 @@ class DobotRobotAdapter:
 
     @staticmethod
     def _check_state(feedback: DobotFeedback, *, allow_running: bool = False) -> None:
+        state = (f"robot_mode={feedback.robot_mode}, error_status={int(feedback.error)}, "
+                 f"enabled={int(feedback.enabled)}, running={int(feedback.running)}")
         if feedback.error or feedback.robot_mode == RobotStatus.ERROR:
-            raise RuntimeError("The Dobot controller reports an error.")
+            raise DobotStateError(f"The Dobot controller reports an error ({state}).")
         allowed = {RobotStatus.IDLE, RobotStatus.RUNNING} if allow_running else {RobotStatus.IDLE}
         if not feedback.enabled or feedback.robot_mode not in allowed:
-            raise RuntimeError("Dobot must be enabled and ready in TCP/IP mode.")
+            raise DobotStateError(f"Dobot must be enabled and ready in TCP/IP mode ({state}).")
         if not allow_running and feedback.running:
-            raise RuntimeError("Dobot is already executing a movement.")
+            raise DobotStateError(f"Dobot is already executing a movement ({state}).")
 
-    def connect(self) -> None:
-        """Connect and verify readiness without enabling the robot or clearing alarms."""
+    def connect(self, *, require_ready: bool = True) -> None:
+        """Connect and normally require readiness; diagnostics may inspect a faulted robot.
+
+        require_ready=False only skips the initial readiness check. Pose access
+        and movement still enforce their controller state checks.
+        """
         try:
             self._robot.connect()
-            self._check_state(self._robot.feedback())
+            if require_ready:
+                self._check_state(self._robot.feedback())
         except BaseException:
             self._robot.disconnect()
             raise
 
     def disconnect(self) -> None:
         self._robot.disconnect()
+
+    def get_error_id(self) -> str:
+        """Read active alarms over the dashboard connection without changing state."""
+        return self._robot.connection.get_error_id()
 
     def current_pose(self) -> Pose:
         """Read the latest TCP pose in mm and degrees, in the controller's active frame."""

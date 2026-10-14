@@ -157,6 +157,12 @@ class DobotProtocolTests(unittest.TestCase):
             with self.assertRaises((ConnectionError, TimeoutError)):
                 connection.stop_robot()
 
+    def test_alarm_query_accepts_nested_payload_without_state_changes(self):
+        connection, sockets = self.connection(dashboard=[b"0,{{123},{}},", b"GetErrorID();"])
+        self.assertEqual(connection.get_error_id(), "{{123},{}}")
+        self.assertEqual(sockets[0].sent, [b"GetErrorID()"])
+        self.assertEqual(sockets[1].sent, [])
+
     def test_partial_connect_failure_closes_previous_sockets(self):
         opened = FakeSocket()
         attempts = iter([opened, ConnectionError("failed")])
@@ -202,6 +208,18 @@ class DobotAdapterTests(unittest.TestCase):
             self.assertFalse(client.connected)
             self.assertEqual(client.moves, [])
             self.assertEqual(client.stops, 0)
+
+    def test_diagnostic_connect_allows_inspection_but_still_blocks_motion(self):
+        fault = state(mode=9, error=True)
+        adapter, client = self.adapter([fault, fault])
+        adapter.connect(require_ready=False)
+        self.assertTrue(client.connected)
+        with self.assertRaisesRegex(RuntimeError, "robot_mode=9, error_status=1"):
+            adapter.current_pose()
+        with self.assertRaisesRegex(RuntimeError, "error_status=1"):
+            adapter.move_to(Pose(10, 0, 0))
+        self.assertEqual(client.moves, [])
+        adapter.disconnect()
 
     def test_fault_timeout_and_interrupt_attempt_stop(self):
         for failure in (state(mode=9, error=True), TimeoutError("lost"), KeyboardInterrupt()):

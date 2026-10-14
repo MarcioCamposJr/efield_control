@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 from efield_control.configuration import load_project_config
 from efield_control.domain import Pose
 from efield_control.drivers.stimulators.mtms import MtmsSingleChannelClient
+from efield_control.drivers.robots.dobot import DobotStateError
 from examples import check_connections as example
 
 
@@ -80,6 +81,32 @@ class ConnectionExampleTests(unittest.TestCase):
         with patch.object(example, "ElfinRobotAdapter", return_value=robot):
             with self.assertRaises(ConnectionError):
                 example.check_robot(config)
+        robot.disconnect.assert_called_once()
+
+    def test_dobot_controller_fault_reports_connection_and_alarm_ids(self):
+        config = replace(self.config, hardware=replace(self.config.hardware, robot_type="dobot"))
+        robot = Mock()
+        robot.current_pose.side_effect = DobotStateError("controller error (robot_mode=9, error_status=1)")
+        robot.get_error_id.return_value = "{[123],[],[],[],[],[],[]}"
+        with patch.object(example, "DobotRobotAdapter", return_value=robot):
+            with self.assertRaisesRegex(RuntimeError, "TCP connections and feedback OK") as caught:
+                example.check_robot(config)
+        self.assertIn("robot_mode=9", str(caught.exception))
+        self.assertIn("GetErrorID={[123]", str(caught.exception))
+        robot.connect.assert_called_once_with(require_ready=False)
+        robot.get_error_id.assert_called_once()
+        robot.disconnect.assert_called_once()
+        robot.move_to.assert_not_called()
+
+    def test_alarm_query_failure_preserves_original_controller_fault(self):
+        config = replace(self.config, hardware=replace(self.config.hardware, robot_type="dobot"))
+        robot = Mock()
+        robot.current_pose.side_effect = DobotStateError("controller error (robot_mode=9)")
+        robot.get_error_id.side_effect = TimeoutError("no alarm response")
+        with patch.object(example, "DobotRobotAdapter", return_value=robot):
+            with self.assertRaisesRegex(RuntimeError, "robot_mode=9") as caught:
+                example.check_robot(config)
+        self.assertIn("Alarm query failed", str(caught.exception))
         robot.disconnect.assert_called_once()
 
     def test_serial_only_sends_ping_and_closes(self):

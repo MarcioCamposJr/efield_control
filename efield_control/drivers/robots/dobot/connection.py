@@ -98,7 +98,7 @@ class DobotConnection:
         except KeyError as error:
             raise ConnectionError("The Dobot controller is not connected.") from error
 
-    def _command(self, channel: str, command: str) -> None:
+    def _command(self, channel: str, command: str) -> str:
         """Read a complete semicolon-terminated reply and require error code zero."""
         sock = self._socket(channel)
         deadline = time.monotonic() + self.timeout_s
@@ -120,11 +120,16 @@ class DobotConnection:
         finally:
             sock.settimeout(self.timeout_s)
         reply = response.decode("ascii").strip()
-        match = re.fullmatch(r"(-?\d+)\s*,\s*\{[^{}]*\}\s*,\s*(.*?)\s*;", reply)
-        if match is None or match.group(2) != command:
+        match = re.fullmatch(r"(-?\d+)\s*,\s*(\{.*\})\s*,\s*(.*?)\s*;", reply)
+        if match is None or match.group(3) != command:
             raise DobotCommandError(f"Invalid Dobot reply to {command}: {reply}")
         if int(match.group(1)) != 0:
             raise DobotCommandError(f"Dobot rejected {command}: {reply}")
+        return match.group(2)
+
+    def get_error_id(self) -> str:
+        """Read controller/joint alarm IDs without clearing or resetting them."""
+        return self._command("dashboard", "GetErrorID()")
 
     def move_linear(self, target: list[float], speed_percent: int) -> None:
         """Send MovL on the motion channel, with a speed limit for this command."""
