@@ -147,8 +147,13 @@ robot is not ready to operate; alarms are never cleared automatically.
 The microcontroller check sends only `PING` and requires `PONG`;
 opening USB serial may reset the board, so a timed-out first PING is retried once.
 The Red Pitaya check reads `*IDN?` over SCPI. The mTMS check starts and closes
-the API device/session without charging or firing. API startup duration is
-controlled by the vendor library. These checks do not prove acquisition quality
+the API device/session without charging or firing. It requires an Operational
+device and a Started session and applies best-effort deadlines to public API
+calls using the `[mtms]` timeout settings in TOML. Native SDK waits may delay
+these deadlines; all communication goes through MTMSApi's public methods.
+The real API check runs on the ROS Linux host's main Python thread; see the
+[mTMS integration notes](efield_control/drivers/stimulators/mtms/README.md).
+These checks do not prove acquisition quality
 or movement accuracy and send no motion, servo, acquisition-arm, or pulse commands.
 
 The executable refuses any real operation without the literal confirmation
