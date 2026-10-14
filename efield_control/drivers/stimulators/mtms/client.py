@@ -76,25 +76,27 @@ class MtmsSingleChannelClient:
 
     @staticmethod
     def validate_environment() -> None:
+        """Check imports in the current environment without preparing it."""
+        MtmsSingleChannelClient._import_vendor_api()
+
+    @staticmethod
+    def _import_vendor_api() -> tuple[Callable[[], Any], Any]:
         try:
-            import rclpy  # noqa: F401
-            import MTMSApi  # noqa: F401
-            from mtms_event_interfaces.msg import ExecutionCondition  # noqa: F401
+            from MTMSApi import MTMSApi
+            from mtms_event_interfaces.msg import ExecutionCondition
         except ImportError as error:
             raise RuntimeError(
-                "The mTMS API environment is unavailable. Start the command "
-                "through run_with_mtms.py on the ROS 2 Linux host."
+                "The mTMS API is unavailable in the current Python environment. "
+                "MTMSApi and mtms_event_interfaces.msg.ExecutionCondition "
+                "must already be importable. No environment setup is performed."
             ) from error
+        return MTMSApi, ExecutionCondition
 
     def _load_vendor_api(self) -> tuple[Callable[[], Any], Any]:
         if self._api_factory is not None and self._execution_condition is not None:
             return self._api_factory, self._execution_condition
 
-        self.validate_environment()
-        from MTMSApi import MTMSApi
-        from mtms_event_interfaces.msg import ExecutionCondition
-
-        return MTMSApi, ExecutionCondition
+        return self._import_vendor_api()
 
     def connect(self) -> None:
         if self._api is not None:

@@ -1,4 +1,7 @@
-from pathlib import Path
+import builtins
+import os
+import sys
+from types import ModuleType
 
 import pytest
 
@@ -6,12 +9,6 @@ from efield_control.drivers.stimulators.mtms import (
     MtmsApiPulse,
     MtmsSingleChannelClient,
     MtmsSingleChannelSettings,
-)
-from run_with_mtms import (
-    MtmsBootstrapError,
-    find_mtms_workspace,
-    read_env_file,
-    resolve_api_directory,
 )
 
 
@@ -154,32 +151,55 @@ def test_single_channel_voltage_cannot_exceed_safety_ceiling() -> None:
         )
 
 
-def test_bootstrap_finds_api_and_compiled_workspace(tmp_path: Path) -> None:
-    api_directory = tmp_path / "api" / "python"
-    api_directory.mkdir(parents=True)
-    api_file = api_directory / "MTMSApi.py"
-    api_file.touch()
-    setup = tmp_path / "install" / "local_setup.bash"
-    setup.parent.mkdir()
-    setup.touch()
+def test_client_imports_existing_api_without_preparing_environment(monkeypatch) -> None:
+    vendor_module = ModuleType("MTMSApi")
+    vendor_module.MTMSApi = FakeVendorApi
+    interfaces_module = ModuleType("mtms_event_interfaces")
+    interfaces_module.__path__ = []
+    messages_module = ModuleType("mtms_event_interfaces.msg")
+    messages_module.ExecutionCondition = FakeExecutionCondition
+    monkeypatch.setitem(sys.modules, "MTMSApi", vendor_module)
+    monkeypatch.setitem(sys.modules, "mtms_event_interfaces", interfaces_module)
+    monkeypatch.setitem(sys.modules, "mtms_event_interfaces.msg", messages_module)
+    monkeypatch.setitem(sys.modules, "rclpy", None)
+    environment_before = dict(os.environ)
+    import_path_before = list(sys.path)
+    client = MtmsSingleChannelClient(MtmsSingleChannelSettings())
 
-    assert resolve_api_directory(str(api_file)) == api_directory
-    assert resolve_api_directory(str(api_directory)) == api_directory
-    assert find_mtms_workspace(api_directory) == tmp_path
+    client.validate_environment()
+    factory, condition = client._load_vendor_api()
+
+    assert factory is FakeVendorApi
+    assert condition is FakeExecutionCondition
+    assert dict(os.environ) == environment_before
+    assert sys.path == import_path_before
 
 
-def test_bootstrap_rejects_missing_api(tmp_path: Path) -> None:
-    with pytest.raises(MtmsBootstrapError, match="MTMSApi.py was not found"):
-        resolve_api_directory(str(tmp_path))
+@pytest.mark.parametrize("missing_module", ["MTMSApi", "mtms_event_interfaces.msg"])
+def test_missing_api_import_stops_without_preparing_environment(
+    monkeypatch, missing_module: str
+) -> None:
+    original_import = builtins.__import__
 
+    def import_with_missing_api(name, *args, **kwargs):
+        if name == missing_module:
+            raise ModuleNotFoundError(f"No module named '{name}'", name=name)
+        if name == "MTMSApi":
+            module = ModuleType(name)
+            module.MTMSApi = FakeVendorApi
+            return module
+        return original_import(name, *args, **kwargs)
 
-def test_bootstrap_reads_quoted_env_values(tmp_path: Path) -> None:
-    env_file = tmp_path / ".env"
-    env_file.write_text(
-        '# comment\nEFIELD_MTMS_API_PATH="/opt/mtms api/MTMSApi.py"\n',
-        encoding="utf-8",
-    )
+    monkeypatch.setattr(builtins, "__import__", import_with_missing_api)
+    environment_before = dict(os.environ)
+    import_path_before = list(sys.path)
+    client = MtmsSingleChannelClient(MtmsSingleChannelSettings())
 
-    assert read_env_file(env_file)["EFIELD_MTMS_API_PATH"] == (
-        "/opt/mtms api/MTMSApi.py"
-    )
+    with pytest.raises(RuntimeError, match="No environment setup is performed") as error:
+        client.connect()
+
+    assert isinstance(error.value.__cause__, ModuleNotFoundError)
+    assert error.value.__cause__.name == missing_module
+    assert client._api is None
+    assert dict(os.environ) == environment_before
+    assert sys.path == import_path_before

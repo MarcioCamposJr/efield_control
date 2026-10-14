@@ -48,7 +48,7 @@ def test_cli_value_has_precedence_over_loaded_configuration() -> None:
     assert args.rp_ip == "169.254.197.73"
 
 
-def test_mtms_api_preflight_requires_bootstrapped_environment(monkeypatch) -> None:
+def test_mtms_api_preflight_requires_api_in_current_environment(monkeypatch) -> None:
     args = build_parser().parse_args(["center", "--pulse-source", "mtms_api"])
     apply_project_config(args, load_project_config(environ={}))
 

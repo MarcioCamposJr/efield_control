@@ -161,19 +161,18 @@ timestamp, waits for completion, and optionally discharges the channel. This
 keeps electrical and API-based stimulation interchangeable without coupling
 acquisition or mapping code to the vendor library.
 
-The external API depends on ROS 2 and the compiled mTMS workspace. On the Linux
-control host, configure `EFIELD_MTMS_API_PATH` in `.env` and start project
-commands through the bootstrap:
+The mTMS API and its dependencies must already be importable in the Python
+environment used to run the project. Run project commands directly:
 
 ```bash
-source .venv/bin/activate
-python run_with_mtms.py -m efield_control.cli show-config
+python -m efield_control.cli show-config
 ```
 
-The bootstrap sources ROS 2, sources the workspace, extends `PYTHONPATH`, and
-validates `rclpy`, `MTMSApi`, and `ExecutionCondition` before running the
-command. See `efield_control/drivers/stimulators/mtms/README.md` for setup
-details.
+The integration imports `MTMSApi` and `ExecutionCondition` from the existing
+environment. It does not install packages, run setup scripts, or modify the
+Python import path or environment variables. If imports fail, the operation
+stops with an error. See `efield_control/drivers/stimulators/mtms/README.md`
+for integration details.
 
 The low-level SCPI client remains available for direct use through:
 

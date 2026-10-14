@@ -1,31 +1,28 @@
 # mTMS API integration
 
-The mTMS API is a ROS 2-backed Python module stored outside this repository.
-Use the root-level `run_with_mtms.py` bootstrap on the Linux mTMS host. It
-sources ROS 2 and the compiled mTMS workspace, adds the directory containing
-`MTMSApi.py` to `PYTHONPATH`, validates all required imports, and only then
-starts the requested project command.
+The mTMS API is an external Python module. The integration uses the current
+Python environment, where these imports must already work:
 
-Configure the external installation in `.env`:
-
-```dotenv
-EFIELD_MTMS_API_PATH=/home/user/mtms/api/python/MTMSApi.py
-EFIELD_MTMS_ROS_SETUP=/opt/ros/jazzy/setup.bash
+```python
+from MTMSApi import MTMSApi
+from mtms_event_interfaces.msg import ExecutionCondition
 ```
 
-The API setting may point either to `MTMSApi.py` or its containing directory.
-The bootstrap searches its parent directories for
-`install/local_setup.bash`.
+The project does not install packages, run shell or ROS setup scripts, search
+for an API installation, or modify environment variables or the Python import
+path. Missing imports stop the operation with an error; no environment repair
+is attempted.
 
-Example:
+Run commands directly using the Python environment that already has the API:
 
 ```bash
-source .venv/bin/activate
-python run_with_mtms.py -m efield_control.cli show-config
+python -m efield_control.cli show-config
 ```
 
-The Python virtual environment must use the same Python major/minor version as
-the ROS 2 installation. ROS 2 Jazzy on Ubuntu 24.04 normally uses Python 3.12.
+`show-config` only displays configuration; it does not connect to the device.
+Selecting `pulse.source = "mtms_api"` for a hardware operation validates the
+imports before creating the API instance and calling `start_device()` and
+`start_session()`.
 
 `MtmsApiPulse` is the application-facing lifecycle adapter. Its
 `MtmsSingleChannelClient` implementation uses the API sequence supplied with
