@@ -4,6 +4,7 @@ import contextlib
 import io
 import socket
 import unittest
+from contextlib import nullcontext
 from dataclasses import replace
 from unittest.mock import Mock, patch
 
@@ -181,12 +182,19 @@ class ConnectionExampleTests(unittest.TestCase):
 
     def test_mtms_opens_and_closes_session_without_charge_or_pulse(self):
         api = Mock()
+        api.node = None
+        api.get_device_state.side_effect = [2, 2, 0]
+        api.get_session_state.side_effect = [2, 0]
         def factory(settings):
-            return MtmsSingleChannelClient(settings, api_factory=lambda: api, execution_condition=object())
+            return MtmsSingleChannelClient(settings, api_factory=lambda: api, execution_condition=object(),
+                                           deadline_guard=lambda *args: nullcontext())
         with patch.object(example, "MtmsSingleChannelClient", side_effect=factory):
             self.assertIn("session", example.check_mtms(self.config))
         self.assertEqual([call[0] for call in api.mock_calls], [
-            "start_device", "start_session", "stop_session", "stop_device", "end",
+            "start_device_without_waiting", "get_device_state",
+            "start_session_without_waiting", "get_device_state", "get_session_state",
+            "stop_session_without_waiting", "get_session_state",
+            "stop_device_without_waiting", "get_device_state", "end",
         ])
         api.send_charge.assert_not_called()
         api.send_pulse.assert_not_called()
@@ -195,13 +203,17 @@ class ConnectionExampleTests(unittest.TestCase):
 
     def test_mtms_failed_session_start_still_shuts_down_device(self):
         api = Mock()
-        api.start_session.side_effect = RuntimeError("session unavailable")
+        api.node = None
+        api.get_device_state.side_effect = [2, 0]
+        api.get_session_state.return_value = 0
+        api.start_session_without_waiting.side_effect = RuntimeError("session unavailable")
         def factory(settings):
-            return MtmsSingleChannelClient(settings, api_factory=lambda: api, execution_condition=object())
+            return MtmsSingleChannelClient(settings, api_factory=lambda: api, execution_condition=object(),
+                                           deadline_guard=lambda *args: nullcontext())
         with patch.object(example, "MtmsSingleChannelClient", side_effect=factory):
             with self.assertRaisesRegex(RuntimeError, "session unavailable"):
                 example.check_mtms(self.config)
-        api.stop_device.assert_called_once()
+        api.stop_device_without_waiting.assert_called_once()
         api.end.assert_called_once()
         api.send_charge.assert_not_called()
 

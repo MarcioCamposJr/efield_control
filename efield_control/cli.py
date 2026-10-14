@@ -156,6 +156,11 @@ def _mtms_if_requested(args: argparse.Namespace) -> MtmsApiPulse | None:
             schedule_lead_s=args.mtms_schedule_lead,
             minimum_inter_pulse_interval_s=args.mtms_minimum_interval,
             discharge_after_pulse=args.mtms_discharge_after_pulse,
+            service_discovery_timeout_s=args.mtms_service_discovery_timeout,
+            device_startup_timeout_s=args.mtms_device_startup_timeout,
+            session_startup_timeout_s=args.mtms_session_startup_timeout,
+            operation_timeout_s=args.mtms_operation_timeout,
+            shutdown_timeout_s=args.mtms_shutdown_timeout,
         )
     )
     pulse = MtmsApiPulse(client)
@@ -420,6 +425,11 @@ def _validate_runtime_settings(args: argparse.Namespace) -> None:
             schedule_lead_s=args.mtms_schedule_lead,
             minimum_inter_pulse_interval_s=args.mtms_minimum_interval,
             discharge_after_pulse=args.mtms_discharge_after_pulse,
+            service_discovery_timeout_s=args.mtms_service_discovery_timeout,
+            device_startup_timeout_s=args.mtms_device_startup_timeout,
+            session_startup_timeout_s=args.mtms_session_startup_timeout,
+            operation_timeout_s=args.mtms_operation_timeout,
+            shutdown_timeout_s=args.mtms_shutdown_timeout,
         )
         MtmsSingleChannelClient.validate_environment()
     AcquisitionSettings(
@@ -496,6 +506,11 @@ def apply_project_config(args: argparse.Namespace, config: ProjectConfig) -> Non
         "mtms_schedule_lead": config.mtms.schedule_lead_s,
         "mtms_minimum_interval": config.mtms.minimum_inter_pulse_interval_s,
         "mtms_discharge_after_pulse": config.mtms.discharge_after_pulse,
+        "mtms_service_discovery_timeout": config.mtms.service_discovery_timeout_s,
+        "mtms_device_startup_timeout": config.mtms.device_startup_timeout_s,
+        "mtms_session_startup_timeout": config.mtms.session_startup_timeout_s,
+        "mtms_operation_timeout": config.mtms.operation_timeout_s,
+        "mtms_shutdown_timeout": config.mtms.shutdown_timeout_s,
         "movement_timeout": config.robot.movement_timeout_s,
         "settling_time": config.robot.settling_time_s,
         "initial_step": config.centering.initial_step_mm,

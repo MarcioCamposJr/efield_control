@@ -89,6 +89,11 @@ class MtmsConfig:
     schedule_lead_s: float = 1.0
     minimum_inter_pulse_interval_s: float = 2.0
     discharge_after_pulse: bool = True
+    service_discovery_timeout_s: float = 30.0
+    device_startup_timeout_s: float = 30.0
+    session_startup_timeout_s: float = 10.0
+    operation_timeout_s: float = 10.0
+    shutdown_timeout_s: float = 10.0
 
     def __post_init__(self) -> None:
         from .drivers.stimulators.mtms import MtmsSingleChannelSettings

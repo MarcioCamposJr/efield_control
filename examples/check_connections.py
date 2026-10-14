@@ -156,7 +156,7 @@ def check_mtms(config: ProjectConfig) -> str:
 
     def check() -> str:
         client.connect()
-        return "API device and session started and closed"
+        return "Device Operational and session Started confirmed; shutdown confirmed"
 
     return _with_cleanup(check, client.close)
 

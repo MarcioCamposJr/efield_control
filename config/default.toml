@@ -84,9 +84,20 @@ schedule_lead_s = 1.0
 # seconds has elapsed since completion of the previous pulse.
 minimum_inter_pulse_interval_s = 2.0
 
-# Explicitly discharge the selected channel to 0 V after every pulse. Shutdown
-# also attempts to discharge a channel that may remain charged.
+# Request minimum discharge after each pulse. The current vendor API clamps
+# a requested target of 0 V to 3 V; this is not proof of zero physical voltage.
+# Shutdown also attempts to discharge a channel that may remain charged.
 discharge_after_pulse = true
+
+# Best-effort deadlines for API/service discovery, device and session startup,
+# one complete charge/pulse/marker operation, and each shutdown step, in seconds.
+# Native SDK waits may delay deadlines. Failed startup blocks session creation;
+# shutdown is still attempted through the public API on failure.
+service_discovery_timeout_s = 30.0
+device_startup_timeout_s = 30.0
+session_startup_timeout_s = 10.0
+operation_timeout_s = 10.0
+shutdown_timeout_s = 10.0
 
 [robot]
 # Shared motion settings for Elfin and Dobot in center and planar.
