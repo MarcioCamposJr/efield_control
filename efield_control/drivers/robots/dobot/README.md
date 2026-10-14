@@ -32,8 +32,9 @@ EFIELD_ROBOT_HOST=192.168.5.1
 
 The `[robot]` parameters in `config/default.toml` are shared with Elfin:
 `speed_percent`, `socket_timeout_s`, `movement_timeout_s`, `settling_time_s`,
-`position_tolerance_mm`, and `orientation_tolerance_deg`. Speed can be overridden
-with `--robot-speed-percent 10`. Robot identity has no TOML or CLI override.
+`position_tolerance_mm`, and `orientation_tolerance_deg`. Edit the TOML to change
+motion parameters; command-line parameter overrides are not accepted.
+Robot identity has no TOML or CLI override.
 `EFIELD_ELFIN_USE_NEW_API` applies only to Elfin. Dobot's streaming feedback
 freshness limit remains internal to the driver (one second by default).
 

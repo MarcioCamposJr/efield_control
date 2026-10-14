@@ -323,7 +323,8 @@ class DobotSelectionTests(unittest.TestCase):
         for command in ("center", "planar"):
             for kind, expected in (("elfin", ElfinRobotAdapter), ("dobot", DobotRobotAdapter)):
                 selected = replace(config, hardware=replace(config.hardware, robot_type=kind))
-                args = build_parser().parse_args([command, "--robot-speed-percent", "20"])
+                selected = replace(selected, robot=replace(selected.robot, speed_percent=20))
+                args = build_parser().parse_args([command])
                 apply_project_config(args, selected)
                 args.project_config = selected
                 with patch("socket.socket", side_effect=AssertionError("Unexpected connection")):
@@ -331,13 +332,14 @@ class DobotSelectionTests(unittest.TestCase):
                 self.assertIsInstance(robot, expected)
                 self.assertEqual(robot.speed_percent, 20)
 
-    def test_configuration_selection_and_cli_precedence(self):
+    def test_environment_selection_and_toml_motion_parameters(self):
         config = load_project_config(environ={"EFIELD_ROBOT_TYPE": "dobot"})
         args = build_parser().parse_args(["center"])
         apply_project_config(args, config)
         args.project_config = config
         self.assertIsInstance(_robot(args), DobotRobotAdapter)
-        args = build_parser().parse_args(["center", "--robot-speed-percent", "25"])
+        config = replace(config, robot=replace(config.robot, speed_percent=25))
+        args = build_parser().parse_args(["center"])
         apply_project_config(args, config)
         self.assertEqual(args.robot_speed_percent, 25)
 

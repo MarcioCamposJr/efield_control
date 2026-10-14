@@ -1,6 +1,6 @@
 # Experiment configuration.
 # Device addresses and serial-port settings belong in .env, not in this file.
-# Values may be overridden by command-line arguments for a single run.
+# Experiment parameters are read from TOML; CLI parameter overrides are disabled.
 
 [acquisition]
 # Red Pitaya ADC decimation factor. For a 125 MS/s board, the effective sample

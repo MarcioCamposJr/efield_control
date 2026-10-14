@@ -72,7 +72,7 @@ def _require_confirmation(args: argparse.Namespace) -> None:
 def _require_value(args: argparse.Namespace, attribute: str, source: str) -> Any:
     value = getattr(args, attribute, None)
     if value in (None, ""):
-        raise SystemExit(f"Missing {source}. Set it in .env, TOML, or the CLI.")
+        raise SystemExit(f"Missing {source}. Set it in the hardware .env file.")
     return value
 
 
@@ -178,7 +178,7 @@ def _new_store(args: argparse.Namespace, run_name: str) -> CsvRunStore:
     }
     store.write_json(
         "resolved_config.json",
-        {"loaded_config": config.to_dict(), "effective_cli": effective},
+        {"loaded_config": config.to_dict(), "effective_settings": effective},
     )
     return store
 
@@ -438,120 +438,35 @@ def _validate_runtime_settings(args: argparse.Namespace) -> None:
         raise ValueError("Serial baud rate and timeout are invalid.")
 
 
-def _add_acquisition_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--rp-ip")
-    parser.add_argument("--rp-port", type=int)
-    parser.add_argument("--decimation", type=int)
-    parser.add_argument("--trigger-source")
-    parser.add_argument("--trigger-delay", type=int)
-    parser.add_argument("--trigger-timeout", type=float)
-    parser.add_argument("--buffer-timeout", type=float)
-    parser.add_argument("--repetitions", type=int)
-    parser.add_argument("--repetition-interval", type=float)
-    parser.add_argument("--high-voltage", action=argparse.BooleanOptionalAction)
-    parser.add_argument(
-        "--pulse-source", choices=("serial", "redpitaya", "mtms_api")
-    )
-    parser.add_argument("--pulse-pin")
-    parser.add_argument("--pulse-duration", type=float)
-    parser.add_argument("--mtms-channel", type=int)
-    parser.add_argument("--mtms-allowed-channels", type=int, nargs="+")
-    parser.add_argument("--mtms-target-voltage", type=float)
-    parser.add_argument("--mtms-maximum-target-voltage", type=float)
-    parser.add_argument(
-        "--mtms-reverse-polarity", action=argparse.BooleanOptionalAction
-    )
-    parser.add_argument("--mtms-trigger-out-port", type=int)
-    parser.add_argument("--mtms-trigger-out-duration", type=int)
-    parser.add_argument("--mtms-schedule-lead", type=float)
-    parser.add_argument("--mtms-minimum-interval", type=float)
-    parser.add_argument(
-        "--mtms-discharge-after-pulse", action=argparse.BooleanOptionalAction
-    )
-    parser.add_argument("--output")
-    parser.add_argument("--save-waveforms", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--settling-time", type=float)
-    parser.add_argument("--confirm-hardware")
-
-
-def _add_serial_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--serial-port")
-    parser.add_argument("--serial-baud", type=int)
-    parser.add_argument("--serial-timeout", type=float)
-
-
-def _add_robot_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--robot-speed-percent", type=int,
-                        help="Robot motion speed percentage (1-100)")
-    parser.add_argument("--robot-ip")
-    parser.add_argument("--movement-timeout", type=float)
-
-
 def build_parser() -> argparse.ArgumentParser:
-    """Define commands and associate each with the function that runs the operation."""
+    """Choose an operation and input files; experiment parameters come from TOML."""
     parser = argparse.ArgumentParser(prog="efield-control")
-    parser.add_argument("--config", default="config/default.toml")
-    parser.add_argument("--env-file", default=".env")
-    parser.add_argument(
-        "--angular-calibration",
-        default="config/calibration/angular_stage.toml",
-    )
-    parser.add_argument(
-        "--sensor-calibration",
-        default="config/calibration/sensor_pose.toml",
-    )
+    parser.add_argument("--config", default="config/default.toml",
+                        help="Experiment TOML file")
+    parser.add_argument("--env-file", default=".env",
+                        help="Hardware identity and endpoints file")
+    parser.add_argument("--angular-calibration", default="config/calibration/angular_stage.toml")
+    parser.add_argument("--sensor-calibration", default="config/calibration/sensor_pose.toml")
     commands = parser.add_subparsers(dest="command", required=True)
-
     commands.add_parser("show-config", help="Print the resolved configuration").set_defaults(
         handler=show_config
     )
-
-    center = commands.add_parser("center", help="Center the sensor with an Elfin or Dobot robot")
-    _add_acquisition_arguments(center)
-    _add_serial_arguments(center)
-    _add_robot_arguments(center)
-    center.add_argument("--initial-step", type=float)
-    center.add_argument("--minimum-step", type=float)
-    center.add_argument("--step-reduction", type=float)
-    center.add_argument("--relative-improvement", type=float)
-    center.add_argument("--max-iterations", type=int)
-    center.add_argument("--max-radius", type=float)
-    # handler stores the function that main calls when the command is center.
-    center.set_defaults(handler=run_center)
-
-    planar = commands.add_parser("planar", help="Run a planar map with an Elfin or Dobot robot")
-    _add_acquisition_arguments(planar)
-    _add_serial_arguments(planar)
-    _add_robot_arguments(planar)
-    planar.add_argument("--x-start", type=float)
-    planar.add_argument("--x-stop", type=float)
-    planar.add_argument("--x-step", type=float)
-    planar.add_argument("--y-start", type=float)
-    planar.add_argument("--y-stop", type=float)
-    planar.add_argument("--y-step", type=float)
-    planar.set_defaults(handler=run_planar)
-
-    circular = commands.add_parser("circular", help="Run a serial-controlled angular map")
-    _add_acquisition_arguments(circular)
-    _add_serial_arguments(circular)
-    circular.add_argument("--center-first", action=argparse.BooleanOptionalAction)
-    circular.add_argument("--base-start", type=float)
-    circular.add_argument("--base-stop", type=float)
-    circular.add_argument("--base-step", type=float)
-    circular.add_argument("--inclination-start", type=float)
-    circular.add_argument("--inclination-stop", type=float)
-    circular.add_argument("--inclination-step", type=float)
-    circular.set_defaults(handler=run_circular)
+    for name, description, handler in (
+        ("center", "Center the sensor with the configured robot", run_center),
+        ("planar", "Run the configured planar map", run_planar),
+        ("circular", "Run the configured angular stage map", run_circular),
+    ):
+        command = commands.add_parser(name, help=description)
+        command.add_argument(
+            "--confirm-hardware", metavar="MOVE_AND_FIRE",
+            help="Authorize real motion and stimulation for the whole experiment",
+        )
+        command.set_defaults(handler=handler)
     return parser
 
 
-def _set_missing(args: argparse.Namespace, attribute: str, value: Any) -> None:
-    if hasattr(args, attribute) and getattr(args, attribute) is None:
-        setattr(args, attribute, value)
-
-
 def apply_project_config(args: argparse.Namespace, config: ProjectConfig) -> None:
-    """Fill omitted arguments from configuration, preserving explicit CLI values."""
+    """Populate runtime settings from resolved files, without CLI parameter overrides."""
     values = {
         "rp_ip": config.hardware.red_pitaya_host,
         "rp_port": config.hardware.red_pitaya_port,
@@ -606,7 +521,7 @@ def apply_project_config(args: argparse.Namespace, config: ProjectConfig) -> Non
         "save_waveforms": config.storage.save_waveforms,
     }
     for attribute, value in values.items():
-        _set_missing(args, attribute, value)
+        setattr(args, attribute, value)
 
 
 def main(argv: Iterable[str] | None = None) -> int:

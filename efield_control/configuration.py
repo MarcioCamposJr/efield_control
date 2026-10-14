@@ -292,7 +292,7 @@ def load_project_config(
     """Merge defaults, TOML, .env, and the existing environment in increasing priority.
 
     Values are copied into project objects without writing process environment
-    variables. CLI arguments are applied later in cli.py.
+    variables. cli.py only selects the operation and input file paths.
     """
     values = _deep_copy(DEFAULTS)
     toml_values = _read_toml(config_path)

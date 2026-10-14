@@ -64,10 +64,13 @@ and trajectory logic to be validated without moving real hardware.
 
 ## Configuration and calibration
 
-Configuration follows this precedence order:
+Experiment parameters come from the selected TOML file, with built-in defaults
+for omitted fields. Hardware identity and endpoints come from `.env`, with
+existing process environment variables taking priority:
 
 ```text
-CLI arguments > process environment / .env > TOML > built-in safety defaults
+Experiment parameters: TOML > built-in safety defaults
+Hardware: process environment > .env > built-in defaults
 ```
 
 Local device endpoints belong in `.env`, which is ignored by Git. Copy
@@ -111,18 +114,31 @@ applied as a rigid transform because the final mounting geometry is still
 required.
 
 Every experiment writes `resolved_config.json` beside `summary.csv`, recording
-the loaded configuration, calibration, environment-resolved endpoints, and CLI
-overrides used for that run.
+the loaded configuration, calibration, environment-resolved endpoints, and
+effective settings used for that run.
 
 ## Operational commands
 
 The executable refuses any real operation without the literal confirmation
 `--confirm-hardware MOVE_AND_FIRE`. Review every parameter before using it:
 
+The CLI selects the operation and file paths only. Acquisition settings, pulse
+source, repetitions, robot speed, map ranges, and output settings are edited in
+TOML, not passed as command-line overrides. For example, edit `[pulse].source`
+to choose `mtms_api`, and `[planar_mapping]` to change the planar grid.
+
 ```powershell
 uv run efield-control center --help
 uv run efield-control planar --help
 uv run efield-control circular --help
+```
+
+Run an experiment using the parameters already saved in the files:
+
+```powershell
+python -m efield_control.cli center --confirm-hardware MOVE_AND_FIRE
+python -m efield_control.cli planar --confirm-hardware MOVE_AND_FIRE
+python -m efield_control.cli circular --confirm-hardware MOVE_AND_FIRE
 ```
 
 Alternative files can be selected before the subcommand:
