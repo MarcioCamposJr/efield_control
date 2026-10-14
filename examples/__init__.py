@@ -1,2 +1,2 @@
-"""Exemplos executaveis sem hardware real."""
+"""Runnable examples for simulation and device connection checks."""
 

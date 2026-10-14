@@ -1,4 +1,4 @@
-"""Check all configured devices: python -m examples.check_connections.
+"""Check all configured devices: python examples/check_connections.py.
 
 Reads the existing TOML, .env, and calibration files. No motion, acquisition
 arming, capacitor charging, or pulse commands are sent. mTMS is checked by
@@ -10,9 +10,17 @@ and leaves it enabled after closing the sockets. It does not change control mode
 from __future__ import annotations
 
 import socket
+import sys
 import time
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Callable
+
+PROJECT_DIRECTORY = Path(__file__).resolve().parents[1]
+if not __package__:
+    # Direct file execution normally searches examples/ before site-packages.
+    # Prefer this checkout for this process only; no environment or files change.
+    sys.path.insert(0, str(PROJECT_DIRECTORY))
 
 from efield_control.configuration import ProjectConfig, load_project_config
 from efield_control.drivers.robots.dobot import DobotRobotAdapter, DobotStateError
@@ -176,7 +184,13 @@ def check_connections(
 
 def main() -> int:
     try:
-        config = load_project_config()
+        # Resolve files from this checkout even when the IDE uses another cwd.
+        config = load_project_config(
+            config_path=PROJECT_DIRECTORY / "config/default.toml",
+            env_path=PROJECT_DIRECTORY / ".env",
+            angular_calibration_path=PROJECT_DIRECTORY / "config/calibration/angular_stage.toml",
+            sensor_calibration_path=PROJECT_DIRECTORY / "config/calibration/sensor_pose.toml",
+        )
     except (OSError, ValueError) as error:
         print(f"Configuration error: {error}")
         return 2

@@ -1,7 +1,14 @@
-"""Example with its own main: run python -m examples.simulate_centering.
+"""Example with its own main: run python examples/simulate_centering.py.
 
 Use only simulators and local parameters without reading CLI configuration files.
 """
+
+import sys
+from pathlib import Path
+
+if not __package__:
+    # Use this checkout when running the file directly, without installing it.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from efield_control.acquisition import AcquisitionService
 from efield_control.centering import CenteringSettings, SensorCentering

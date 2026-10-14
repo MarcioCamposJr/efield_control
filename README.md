@@ -122,10 +122,15 @@ effective settings used for that run.
 Check all four configured device connections without running an experiment:
 
 ```powershell
-python -m examples.check_connections
+python examples/check_connections.py
 ```
 
 The example reads the existing `.env`, experiment TOML, and calibration files.
+Both examples also support `python -m examples.<name>`. When launched by file
+path (including the IDE Run button), they prefer this checkout over an installed
+copy for that Python process only. The connection example resolves configuration
+files relative to the checkout, so it can be launched from another directory.
+No installation, persistent environment change, or working-directory change is needed.
 It reports `OK` or `FAIL` and a reason for each device, then lists those that
 passed. One failure does not skip the other checks. All connections are closed.
 The exit code is 0 when every device passes, 1 if a device check fails, or 2 if
