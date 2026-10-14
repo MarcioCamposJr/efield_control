@@ -26,6 +26,14 @@ faulted or disabled controller and read `GetErrorID()`. Pose reads and movement
 still check readiness. State exceptions include mode, error, enable, and running
 flags so communication failures can be distinguished from controller alarms.
 
+`enable()` is a separate explicit operation: it sends `EnableRobot()` via the
+dashboard channel only for a disabled, fault-free controller, then waits for
+new feedback showing enabled and idle. It uses `movement_timeout_s` as its
+confirmation deadline. It sends no load parameters or control-mode commands
+and never calls PowerOn, ClearError, or movement commands. An already
+enabled, idle robot requires no command. The connection example calls this
+operation and leaves the robot enabled after closing the sockets.
+
 ## Selection
 
 Select the robot and host only in `.env` (or existing process environment):
@@ -48,8 +56,9 @@ python -m efield_control.cli center --confirm-hardware MOVE_AND_FIRE
 python -m efield_control.cli planar --confirm-hardware MOVE_AND_FIRE
 ```
 
-The operator must prepare the controller in TCP/IP mode and enable it before
-running. Poses use the controller's active tool/user frame: XYZ in mm and
+The operator must prepare the controller in TCP/IP mode. Normal experiments
+require it to be enabled already; the connection example can enable it through
+TCP/IP when powered and fault-free. Poses use the active tool/user frame: XYZ in mm and
 RX/RY/RZ in degrees. The driver leaves those frames unchanged; review them so
 the sensor pose and map origin refer to the intended frame.
 

@@ -16,7 +16,7 @@ class DobotStateError(RuntimeError):
 
 
 class DobotRobotAdapter:
-    """Expose poses and blocking linear moves; the controller must already be enabled."""
+    """Expose poses and blocking moves; enabling is an explicit separate operation."""
 
     def __init__(
         self,
@@ -78,6 +78,37 @@ class DobotRobotAdapter:
     def get_error_id(self) -> str:
         """Read active alarms over the dashboard connection without changing state."""
         return self._robot.connection.get_error_id()
+
+    def enable(self) -> bool:
+        """Enable an idle, fault-free controller and wait for fresh ready feedback.
+
+        Returns True if EnableRobot was sent, False if already enabled. This
+        does not power on the arm, clear alarms, change control mode, or move.
+        Use connect(require_ready=False) first when the robot is disabled.
+        """
+        feedback = self._robot.feedback()
+        if feedback.error or feedback.robot_mode == RobotStatus.ERROR:
+            self._check_state(feedback)
+        if feedback.robot_mode == RobotStatus.IDLE and feedback.enabled and not feedback.running:
+            return False
+        if feedback.robot_mode not in {RobotStatus.DISABLED, RobotStatus.IDLE} or feedback.running:
+            self._check_state(feedback)
+
+        deadline = time.monotonic() + self.movement_timeout_s
+        self._robot.connection.enable_robot()
+        after = time.monotonic()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("Timed out waiting for Dobot enable confirmation.")
+            feedback = self._robot.feedback(after=after, timeout_s=remaining)
+            if feedback.error or feedback.robot_mode == RobotStatus.ERROR:
+                self._check_state(feedback)
+            if feedback.robot_mode == RobotStatus.IDLE and feedback.enabled and not feedback.running:
+                return True
+            if feedback.robot_mode not in {RobotStatus.DISABLED, RobotStatus.IDLE} or feedback.running:
+                self._check_state(feedback)
+            after = time.monotonic()
 
     def current_pose(self) -> Pose:
         """Read the latest TCP pose in mm and degrees, in the controller's active frame."""

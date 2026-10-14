@@ -131,6 +131,10 @@ class DobotConnection:
         """Read controller/joint alarm IDs without clearing or resetting them."""
         return self._command("dashboard", "GetErrorID()")
 
+    def enable_robot(self) -> None:
+        """Enable the robot via TCP dashboard without changing its control mode."""
+        self._command("dashboard", "EnableRobot()")
+
     def move_linear(self, target: list[float], speed_percent: int) -> None:
         """Send MovL on the motion channel, with a speed limit for this command."""
         if len(target) != 6 or not all(math.isfinite(value) for value in target):

@@ -3,6 +3,8 @@
 Reads the existing TOML, .env, and calibration files. No motion, acquisition
 arming, capacitor charging, or pulse commands are sent. mTMS is checked by
 starting and closing an API device/session. No environment setup is performed.
+The Dobot check explicitly enables a disabled, fault-free robot through TCP/IP
+and leaves it enabled after closing the sockets. It does not change control mode.
 """
 
 from __future__ import annotations
@@ -73,6 +75,7 @@ def check_robot(config: ProjectConfig) -> str:
         else:
             robot.connect()
         try:
+            enabled_now = hardware.robot_type == "dobot" and robot.enable()
             pose = robot.current_pose()
         except DobotStateError as error:
             try:
@@ -83,7 +86,8 @@ def check_robot(config: ProjectConfig) -> str:
             raise RuntimeError(
                 f"TCP connections and feedback OK; controller not ready: {error} {detail}"
             ) from error
-        return (f"{hardware.robot_type}: TCP pose received "
+        activation = "enabled via TCP/IP; " if enabled_now else ""
+        return (f"{hardware.robot_type}: {activation}TCP pose received "
                 f"(X={pose.x_mm:g}, Y={pose.y_mm:g}, Z={pose.z_mm:g} mm)")
 
     return _with_cleanup(check, robot.disconnect)

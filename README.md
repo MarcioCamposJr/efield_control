@@ -131,7 +131,11 @@ passed. One failure does not skip the other checks. All connections are closed.
 The exit code is 0 when every device passes, 1 if a device check fails, or 2 if
 configuration cannot be loaded.
 
-The robot check connects and reads its TCP pose. If Dobot feedback reports an
+The robot check connects and reads its TCP pose. For a disabled, fault-free
+Dobot, it sends `EnableRobot()` through TCP/IP and waits for feedback confirming
+enabled and idle. It keeps the existing control mode and leaves the robot
+enabled after disconnecting; it does not send movement or disable commands.
+If Dobot feedback reports an
 invalid operating state, it shows that TCP/feedback connected, prints the state
 flags, and reads `GetErrorID()` before closing. This remains `FAIL` because the
 robot is not ready to operate; alarms are never cleared automatically.
@@ -222,7 +226,8 @@ from efield_control.drivers.red_pitaya import scpi
 For Dobot CR/Nova V3, set `EFIELD_ROBOT_TYPE=dobot` in `.env`.
 Both manufacturers use `EFIELD_ROBOT_HOST`. Dobot uses
 the existing controller frames and requires the robot to be enabled and idle;
-the driver does not enable it or clear alarms automatically. See
+ordinary experiment connections do not enable it or clear alarms automatically.
+The connection example explicitly enables a fault-free, disabled Dobot. See
 [Dobot driver details](efield_control/drivers/robots/dobot/README.md) for protocol
 scope and movement checks. Elfin remains the default. Robot selection is not
 accepted in TOML or CLI arguments. `EFIELD_ELFIN_USE_NEW_API` also belongs in

@@ -14,7 +14,7 @@ from efield_control.cli import _robot, apply_project_config, build_parser, main
 from efield_control.configuration import HardwareConfig, RobotConfig, load_project_config
 from efield_control.domain import Pose
 from efield_control.drivers.robots.dobot import (
-    Dobot, DobotCommandError, DobotConnection, DobotFeedback, DobotRobotAdapter,
+    Dobot, DobotCommandError, DobotConnection, DobotFeedback, DobotRobotAdapter, DobotStateError,
 )
 from efield_control.drivers.robots.elfin import ElfinRobotAdapter
 
@@ -65,6 +65,7 @@ class ScriptedClient:
     def __init__(self, states):
         self.states, self.moves = list(states), []
         self.stops, self.connected = 0, False
+        self.enable_requests = 0
         self.connection = self
 
     def connect(self):
@@ -86,6 +87,9 @@ class ScriptedClient:
 
     def stop_robot(self):
         self.stops += 1
+
+    def enable_robot(self):
+        self.enable_requests += 1
 
 
 class QueueConnection:
@@ -163,6 +167,15 @@ class DobotProtocolTests(unittest.TestCase):
         self.assertEqual(sockets[0].sent, [b"GetErrorID()"])
         self.assertEqual(sockets[1].sent, [])
 
+    def test_enable_uses_only_dashboard_and_requires_success(self):
+        connection, sockets = self.connection(dashboard=[b"0,{},EnableRobot();"])
+        connection.enable_robot()
+        self.assertEqual(sockets[0].sent, [b"EnableRobot()"])
+        self.assertEqual(sockets[1].sent, [])
+        connection, _ = self.connection(dashboard=[b"-1,{},EnableRobot();"])
+        with self.assertRaises(DobotCommandError):
+            connection.enable_robot()
+
     def test_partial_connect_failure_closes_previous_sockets(self):
         opened = FakeSocket()
         attempts = iter([opened, ConnectionError("failed")])
@@ -220,6 +233,58 @@ class DobotAdapterTests(unittest.TestCase):
             adapter.move_to(Pose(10, 0, 0))
         self.assertEqual(client.moves, [])
         adapter.disconnect()
+
+    def test_enable_waits_for_new_enabled_idle_feedback_without_moving(self):
+        disabled = state(mode=4, enabled=False)
+        adapter, client = self.adapter([disabled, disabled, state()])
+        with patch.object(client, "feedback", wraps=client.feedback) as feedback:
+            self.assertTrue(adapter.enable())
+        self.assertEqual(client.enable_requests, 1)
+        self.assertEqual(client.moves, [])
+        self.assertEqual(client.stops, 0)
+        self.assertGreater(feedback.call_args_list[1].kwargs["after"], 0)
+
+    def test_enable_is_noop_when_already_ready(self):
+        adapter, client = self.adapter([state()])
+        self.assertFalse(adapter.enable())
+        self.assertEqual(client.enable_requests, 0)
+
+    def test_enable_rejects_fault_poweroff_drag_and_running_states(self):
+        for feedback in (
+            state(mode=9, error=True), state(mode=4, enabled=False, error=True),
+            state(mode=3, enabled=False), state(mode=6), state(mode=7, running=True),
+        ):
+            adapter, client = self.adapter([feedback])
+            with self.assertRaises(DobotStateError):
+                adapter.enable()
+            self.assertEqual(client.enable_requests, 0)
+            self.assertEqual(client.moves, [])
+
+    def test_enable_failure_and_feedback_loss_propagate_without_reset(self):
+        disabled = state(mode=4, enabled=False)
+        for failure in (TimeoutError("no feedback"), state(mode=9, error=True)):
+            adapter, client = self.adapter([disabled, failure])
+            with self.assertRaises((TimeoutError, DobotStateError)):
+                adapter.enable()
+            self.assertEqual(client.enable_requests, 1)
+            self.assertEqual(client.stops, 0)
+
+    def test_enable_rejection_does_not_wait_or_retry(self):
+        adapter, client = self.adapter([state(mode=4, enabled=False)])
+        with patch.object(client, "enable_robot", side_effect=DobotCommandError("rejected")) as enable:
+            with self.assertRaises(DobotCommandError):
+                adapter.enable()
+        enable.assert_called_once()
+        self.assertEqual(client.stops, 0)
+
+    def test_enable_deadline_bounds_wait_even_with_live_disabled_feedback(self):
+        adapter, client = self.adapter([])
+        adapter.movement_timeout_s = 0.005
+        client.feedback = lambda **kwargs: state(mode=4, enabled=False)
+        with self.assertRaisesRegex(TimeoutError, "enable confirmation"):
+            adapter.enable()
+        self.assertEqual(client.enable_requests, 1)
+        self.assertEqual(client.moves, [])
 
     def test_fault_timeout_and_interrupt_attempt_stop(self):
         for failure in (state(mode=9, error=True), TimeoutError("lost"), KeyboardInterrupt()):

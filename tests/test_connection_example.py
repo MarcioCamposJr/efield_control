@@ -73,6 +73,35 @@ class ConnectionExampleTests(unittest.TestCase):
             robot.disconnect.assert_called_once()
             robot.move_to.assert_not_called()
             robot.stop.assert_not_called()
+            if kind == "dobot":
+                robot.enable.assert_called_once()
+            else:
+                robot.enable.assert_not_called()
+
+    def test_dobot_example_explicitly_enables_then_reads_pose_and_leaves_enabled(self):
+        config = replace(self.config, hardware=replace(self.config.hardware, robot_type="dobot"))
+        robot = Mock()
+        robot.enable.return_value = True
+        robot.current_pose.return_value = Pose(1, 2, 3)
+        with patch.object(example, "DobotRobotAdapter", return_value=robot):
+            self.assertIn("enabled via TCP/IP", example.check_robot(config))
+        self.assertEqual([call[0] for call in robot.mock_calls], [
+            "connect", "enable", "current_pose", "disconnect",
+        ])
+        robot.move_to.assert_not_called()
+        robot.disable.assert_not_called()
+
+    def test_dobot_enable_fault_queries_alarms_and_disconnects(self):
+        config = replace(self.config, hardware=replace(self.config.hardware, robot_type="dobot"))
+        robot = Mock()
+        robot.enable.side_effect = DobotStateError("controller fault")
+        robot.get_error_id.return_value = "{[123]}"
+        with patch.object(example, "DobotRobotAdapter", return_value=robot):
+            with self.assertRaisesRegex(RuntimeError, "GetErrorID"):
+                example.check_robot(config)
+        robot.current_pose.assert_not_called()
+        robot.disconnect.assert_called_once()
+        robot.move_to.assert_not_called()
 
     def test_robot_failure_still_disconnects(self):
         robot = Mock()
