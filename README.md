@@ -119,6 +119,26 @@ effective settings used for that run.
 
 ## Operational commands
 
+Check all four configured device connections without running an experiment:
+
+```powershell
+python -m examples.check_connections
+```
+
+The example reads the existing `.env`, experiment TOML, and calibration files.
+It reports `OK` or `FAIL` and a reason for each device, then lists those that
+passed. One failure does not skip the other checks. All connections are closed.
+The exit code is 0 when every device passes, 1 if a device check fails, or 2 if
+configuration cannot be loaded.
+
+The robot check connects and reads its TCP pose (Dobot must already be enabled
+and ready). The microcontroller check sends only `PING` and requires `PONG`;
+opening USB serial may reset the board, so a timed-out first PING is retried once.
+The Red Pitaya check reads `*IDN?` over SCPI. The mTMS check starts and closes
+the API device/session without charging or firing. API startup duration is
+controlled by the vendor library. These checks do not prove acquisition quality
+or movement accuracy and send no motion, servo, acquisition-arm, or pulse commands.
+
 The executable refuses any real operation without the literal confirmation
 `--confirm-hardware MOVE_AND_FIRE`. Review every parameter before using it:
 
