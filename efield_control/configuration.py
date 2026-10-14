@@ -7,6 +7,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+from .drivers.robots.common import RobotMotionSettings
+
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
@@ -23,11 +25,15 @@ class HardwareConfig:
     red_pitaya_host: str = ""
     red_pitaya_port: int = 5000
     robot_host: str = ""
+    robot_type: str = "elfin"
+    elfin_use_new_api: bool = False
     stage_serial_port: str = ""
     stage_serial_baud: int = 115200
     stage_serial_timeout_s: float = 3.0
 
     def __post_init__(self) -> None:
+        if self.robot_type not in {"elfin", "dobot"}:
+            raise ValueError("EFIELD_ROBOT_TYPE must be 'elfin' or 'dobot'.")
         if not 1 <= self.red_pitaya_port <= 65535:
             raise ValueError("Red Pitaya port must be between 1 and 65535.")
         if self.stage_serial_baud <= 0 or self.stage_serial_timeout_s < 0:
@@ -92,14 +98,8 @@ class MtmsConfig:
 
 
 @dataclass(frozen=True, slots=True)
-class RobotConfig:
-    movement_timeout_s: float = 30.0
-    settling_time_s: float = 1.0
-    use_new_api: bool = False
-
-    def __post_init__(self) -> None:
-        if self.movement_timeout_s <= 0 or self.settling_time_s < 0:
-            raise ValueError("Robot timing values are invalid.")
+class RobotConfig(RobotMotionSettings):
+    """Experiment motion parameters; robot identity belongs to HardwareConfig."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,6 +274,8 @@ ENVIRONMENT_FIELDS: dict[str, tuple[str, str]] = {
     "EFIELD_RED_PITAYA_HOST": ("hardware", "red_pitaya_host"),
     "EFIELD_RED_PITAYA_PORT": ("hardware", "red_pitaya_port"),
     "EFIELD_ROBOT_HOST": ("hardware", "robot_host"),
+    "EFIELD_ROBOT_TYPE": ("hardware", "robot_type"),
+    "EFIELD_ELFIN_USE_NEW_API": ("hardware", "elfin_use_new_api"),
     "EFIELD_STAGE_SERIAL_PORT": ("hardware", "stage_serial_port"),
     "EFIELD_STAGE_SERIAL_BAUD": ("hardware", "stage_serial_baud"),
     "EFIELD_STAGE_SERIAL_TIMEOUT_S": ("hardware", "stage_serial_timeout_s"),

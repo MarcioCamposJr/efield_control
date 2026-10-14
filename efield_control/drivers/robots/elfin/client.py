@@ -18,11 +18,12 @@ class Elfin():
     The class for communicating with Elfin robot.
     """
 
-    def __init__(self, ip, use_new_api=False):
+    def __init__(self, ip, use_new_api=False, socket_timeout_s=3.0):
         self.use_new_api = use_new_api
         self.connection = ElfinConnection(
             ip=ip,
             use_new_api=use_new_api,
+            timeout_s=socket_timeout_s,
         )
         self._last_dynamic_target = None
 

@@ -16,8 +16,8 @@ measured by a Red Pitaya.
    `MOVEABS`, and `FIRE` commands.
 
 The algorithms do not depend on a robot brand. `CartesianRobot` is the
-contract implemented by the Elfin driver and intended for the future Dobot
-driver. Likewise, `AngularPositioner` allows the serial controller to be
+contract implemented by both the Elfin and Dobot drivers. Likewise,
+`AngularPositioner` allows the serial controller to be
 replaced by Red Pitaya digital signals without changing the mapping logic.
 
 ## Project structure
@@ -32,8 +32,8 @@ replaced by Red Pitaya digital signals without changing the mapping logic.
 - `efield_control/configuration.py`: typed TOML and environment configuration.
 - `efield_control/calibration.py`: angular and pose calibration transforms.
 - `efield_control/drivers/robots/elfin/`: self-contained Elfin implementation.
-- `efield_control/drivers/robots/dobot/`: reserved location for the future
-  Dobot implementation.
+- `efield_control/drivers/robots/dobot/`: self-contained six-axis Dobot V3
+  implementation, using the same robot contract as Elfin.
 - `efield_control/drivers/red_pitaya/`: self-contained SCPI implementation and
   project-level Red Pitaya adapters.
 - `efield_control/drivers/stimulators/mtms/`: isolated mTMS API integration.
@@ -145,7 +145,7 @@ a new directory containing `summary.csv` and one waveform per point.
 Hardware adapters never connect merely because the package was imported. The
 application explicitly creates:
 
-- `ElfinRobotAdapter` or a future `DobotRobotAdapter`;
+- `ElfinRobotAdapter` or `DobotRobotAdapter`, selected by `EFIELD_ROBOT_TYPE`;
 - `RedPitayaAcquisition`;
 - a pulse source such as `RedPitayaDigitalPulse` or `SerialMotorController`;
 - `CenterSensorWorkflow`, `PlanarMapping`, or `CircularMapping`.
@@ -180,7 +180,18 @@ The low-level SCPI client remains available for direct use through:
 from efield_control.drivers.red_pitaya import scpi
 ```
 
-Before implementing the Dobot adapter, define the controller model, SDK/API,
-coordinate units, orientation convention, and emergency-stop procedure. To
-command the circular stage through the Red Pitaya, also define the DIO pins and
+For Dobot CR/Nova V3, set `EFIELD_ROBOT_TYPE=dobot` in `.env`.
+Both manufacturers use `EFIELD_ROBOT_HOST`. Dobot uses
+the existing controller frames and requires the robot to be enabled and idle;
+the driver does not enable it or clear alarms automatically. See
+[Dobot driver details](efield_control/drivers/robots/dobot/README.md) for protocol
+scope and movement checks. Elfin remains the default. Robot selection is not
+accepted in TOML or CLI arguments. `EFIELD_ELFIN_USE_NEW_API` also belongs in
+`.env` and selects the Elfin protocol variant.
+
+The `[robot]` TOML section contains shared speed, movement and socket timeouts,
+settling time, and target tolerances. Both drivers apply these parameters before
+allowing a measurement; Elfin uses its speed ratio and Dobot uses per-move SpeedL.
+
+To command the circular stage through the Red Pitaya, define the DIO pins and
 the electrical motion-complete handshake.

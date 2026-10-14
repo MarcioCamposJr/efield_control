@@ -29,7 +29,7 @@ class ElfinConnection:
     RESPONSE_LENGTH = 1024
     ROBOT_ID = 0
 
-    def __init__(self, ip, use_new_api):
+    def __init__(self, ip, use_new_api, timeout_s=3.0):
         """
         Class for low-level communication with Elfin robot.
 
@@ -37,6 +37,7 @@ class ElfinConnection:
         """
         self.ip = ip
         self.use_new_api = use_new_api
+        self.timeout_s = timeout_s
         self.servo_started = False
 
         self.connected = False
@@ -52,14 +53,16 @@ class ElfinConnection:
             print("Already connected to the robot")
             return True
 
+        new_socket = socket(AF_INET, SOCK_STREAM)
         try:
-            new_socket = socket(AF_INET, SOCK_STREAM)
+            new_socket.settimeout(self.timeout_s)
             new_socket.connect((self.ip, self.PORT))
 
             self.socket = new_socket
 
             self.connected = True
-        except:
+        except OSError:
+            new_socket.close()
             print("Failed to connect to the robot")
 
         return self.connected
@@ -97,7 +100,7 @@ class ElfinConnection:
             # Receive the response from the robot.
             response = self.socket.recv(self.RESPONSE_LENGTH).decode("utf-8").split(",")
 
-        except (BrokenPipeError, ConnectionResetError, TimeoutError) as e:
+        except OSError as e:
             print("Robot connection error: {}".format(e))
             self.connected = False
             return False, None

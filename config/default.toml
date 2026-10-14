@@ -89,6 +89,9 @@ minimum_inter_pulse_interval_s = 2.0
 discharge_after_pulse = true
 
 [robot]
+# Shared motion settings for Elfin and Dobot in center and planar.
+# Robot identity and Elfin protocol selection belong in .env.
+
 # Maximum time allowed for a robot movement to complete.
 movement_timeout_s = 30.0
 
@@ -96,9 +99,14 @@ movement_timeout_s = 30.0
 # allows mechanical vibration to decay before acquisition.
 settling_time_s = 1.0
 
-# Selects the newer Elfin controller command variant. Leave false unless the
-# connected controller has been verified to require the new API.
-use_new_api = false
+# Requested motion speed, as a percentage of the controller's maximum (1-100).
+# Elfin applies its speed ratio; Dobot uses SpeedL on each movement command.
+speed_percent = 10
+# Maximum time for a TCP connection or response from either robot controller.
+socket_timeout_s = 3.0
+# A move completes only when idle and within both target tolerances.
+position_tolerance_mm = 0.1
+orientation_tolerance_deg = 0.1
 
 [centering]
 # First X/Y displacement tested by the feedback centering algorithm.

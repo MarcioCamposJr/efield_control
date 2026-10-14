@@ -22,6 +22,7 @@ from .drivers.red_pitaya import (
     RedPitayaDigitalPulse,
     RedPitayaSettings,
 )
+from .drivers.robots.dobot import DobotRobotAdapter
 from .drivers.robots.elfin import ElfinRobotAdapter
 from .drivers.serial_controller import SerialMotorController
 from .drivers.stimulators.mtms import (
@@ -30,6 +31,7 @@ from .drivers.stimulators.mtms import (
     MtmsSingleChannelSettings,
 )
 from .mapping import CircularMapping, PlanarMapping, circular_serpentine, planar_serpentine
+from .ports import CartesianRobot
 from .storage import CsvRunStore, MeasurementLocation
 from .workflows import CenterSensorWorkflow
 
@@ -181,8 +183,28 @@ def _new_store(args: argparse.Namespace, run_name: str) -> CsvRunStore:
     return store
 
 
+def _robot(args: argparse.Namespace) -> CartesianRobot:
+    """Select a robot adapter without opening its connection or changing host settings."""
+    host = _require_value(args, "robot_ip", "robot host")
+    config = args.project_config.robot
+    hardware = args.project_config.hardware
+    common = dict(
+        movement_timeout_s=args.movement_timeout,
+        settling_time_s=args.settling_time,
+        speed_percent=args.robot_speed_percent,
+        socket_timeout_s=config.socket_timeout_s,
+        position_tolerance_mm=config.position_tolerance_mm,
+        orientation_tolerance_deg=config.orientation_tolerance_deg,
+    )
+    if hardware.robot_type == "dobot":
+        return DobotRobotAdapter(host, **common)
+    if hardware.robot_type == "elfin":
+        return ElfinRobotAdapter(host, **common, use_new_api=hardware.elfin_use_new_api)
+    raise ValueError("Robot type must be 'elfin' or 'dobot'.")
+
+
 def run_center(args: argparse.Namespace) -> int:
-    """Center the sensor with Elfin, measuring positions suggested by the algorithm."""
+    """Center the sensor with the selected robot, measuring suggested positions."""
     _require_confirmation(args)
     algorithm = SensorCentering(
         CenteringSettings(
@@ -195,12 +217,7 @@ def run_center(args: argparse.Namespace) -> int:
         )
     )
     _validate_runtime_settings(args)
-    robot = ElfinRobotAdapter(
-        _require_value(args, "robot_ip", "robot host"),
-        use_new_api=args.use_new_api,
-        movement_timeout_s=args.movement_timeout,
-        settling_time_s=args.settling_time,
-    )
+    robot = _robot(args)
     acquisition = _acquisition(args)
     serial_controller = None
     mtms_pulse = None
@@ -261,7 +278,7 @@ def run_center(args: argparse.Namespace) -> int:
 
 
 def run_planar(args: argparse.Namespace) -> int:
-    """Traverse X/Y offsets with Elfin and save the measurement at each point."""
+    """Traverse X/Y offsets with the selected robot and save each measurement."""
     _require_confirmation(args)
     _validate_runtime_settings(args)
     points = tuple(
@@ -270,12 +287,7 @@ def run_planar(args: argparse.Namespace) -> int:
             inclusive_range(args.y_start, args.y_stop, args.y_step),
         )
     )
-    robot = ElfinRobotAdapter(
-        _require_value(args, "robot_ip", "robot host"),
-        use_new_api=args.use_new_api,
-        movement_timeout_s=args.movement_timeout,
-        settling_time_s=args.settling_time,
-    )
+    robot = _robot(args)
     acquisition = _acquisition(args)
     serial_controller = None
     mtms_pulse = None
@@ -469,9 +481,10 @@ def _add_serial_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_robot_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--robot-speed-percent", type=int,
+                        help="Robot motion speed percentage (1-100)")
     parser.add_argument("--robot-ip")
     parser.add_argument("--movement-timeout", type=float)
-    parser.add_argument("--use-new-api", action=argparse.BooleanOptionalAction)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -493,7 +506,7 @@ def build_parser() -> argparse.ArgumentParser:
         handler=show_config
     )
 
-    center = commands.add_parser("center", help="Center the sensor with an Elfin robot")
+    center = commands.add_parser("center", help="Center the sensor with an Elfin or Dobot robot")
     _add_acquisition_arguments(center)
     _add_serial_arguments(center)
     _add_robot_arguments(center)
@@ -506,7 +519,7 @@ def build_parser() -> argparse.ArgumentParser:
     # handler stores the function that main calls when the command is center.
     center.set_defaults(handler=run_center)
 
-    planar = commands.add_parser("planar", help="Run a planar map with an Elfin robot")
+    planar = commands.add_parser("planar", help="Run a planar map with an Elfin or Dobot robot")
     _add_acquisition_arguments(planar)
     _add_serial_arguments(planar)
     _add_robot_arguments(planar)
@@ -543,6 +556,7 @@ def apply_project_config(args: argparse.Namespace, config: ProjectConfig) -> Non
         "rp_ip": config.hardware.red_pitaya_host,
         "rp_port": config.hardware.red_pitaya_port,
         "robot_ip": config.hardware.robot_host,
+        "robot_speed_percent": config.robot.speed_percent,
         "serial_port": config.hardware.stage_serial_port,
         "serial_baud": config.hardware.stage_serial_baud,
         "serial_timeout": config.hardware.stage_serial_timeout_s,
@@ -569,7 +583,6 @@ def apply_project_config(args: argparse.Namespace, config: ProjectConfig) -> Non
         "mtms_discharge_after_pulse": config.mtms.discharge_after_pulse,
         "movement_timeout": config.robot.movement_timeout_s,
         "settling_time": config.robot.settling_time_s,
-        "use_new_api": config.robot.use_new_api,
         "initial_step": config.centering.initial_step_mm,
         "minimum_step": config.centering.minimum_step_mm,
         "step_reduction": config.centering.step_reduction,
