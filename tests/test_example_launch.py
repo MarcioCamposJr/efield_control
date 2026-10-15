@@ -7,28 +7,33 @@ from pathlib import Path
 
 
 PROJECT_DIRECTORY = Path(__file__).resolve().parents[1]
+EXPERIMENT_EXAMPLES = ("center_sensor.py", "acquire_planar.py")
 
 
 class ExampleLaunchTests(unittest.TestCase):
-    def test_centering_requires_confirmation_from_another_working_directory(self):
-        result = subprocess.run(
-            [sys.executable, "-B", str(PROJECT_DIRECTORY / "examples/center_sensor.py")],
-            cwd=PROJECT_DIRECTORY / "examples",
-            capture_output=True, text=True, timeout=15,
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Operation blocked", result.stderr)
-        self.assertIn("--confirm-hardware MOVE_AND_FIRE", result.stderr)
+    def test_experiment_examples_require_confirmation_from_another_working_directory(self):
+        for filename in EXPERIMENT_EXAMPLES:
+            with self.subTest(filename=filename):
+                result = subprocess.run(
+                    [sys.executable, "-B", str(PROJECT_DIRECTORY / "examples" / filename)],
+                    cwd=PROJECT_DIRECTORY / "examples",
+                    capture_output=True, text=True, timeout=15,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Operation blocked", result.stderr)
+                self.assertIn("--confirm-hardware MOVE_AND_FIRE", result.stderr)
 
-    def test_centering_help_can_be_launched_without_hardware(self):
-        result = subprocess.run(
-            [sys.executable, "-B", str(PROJECT_DIRECTORY / "examples/center_sensor.py"),
-             "--help"],
-            cwd=PROJECT_DIRECTORY / "examples",
-            capture_output=True, text=True, timeout=15,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("--confirm-hardware", result.stdout)
+    def test_experiment_example_help_can_be_launched_without_hardware(self):
+        for filename in EXPERIMENT_EXAMPLES:
+            with self.subTest(filename=filename):
+                result = subprocess.run(
+                    [sys.executable, "-B", str(PROJECT_DIRECTORY / "examples" / filename),
+                     "--help"],
+                    cwd=PROJECT_DIRECTORY / "examples",
+                    capture_output=True, text=True, timeout=15,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("--confirm-hardware", result.stdout)
 
     def test_connection_example_imports_checkout_and_loads_files_from_other_cwd(self):
         script = PROJECT_DIRECTORY / "examples/check_connections.py"

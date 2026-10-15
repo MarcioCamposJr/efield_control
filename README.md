@@ -126,10 +126,10 @@ python examples/check_connections.py
 ```
 
 The example reads the existing `.env`, experiment TOML, and calibration files.
-Both examples also support `python -m examples.<name>`. When launched by file
+The examples also support `python -m examples.<name>`. When launched by file
 path (including the IDE Run button), they prefer this checkout over an installed
-copy for that Python process only. Both examples resolve configuration
-files relative to the checkout, so it can be launched from another directory.
+copy for that Python process only. The examples resolve configuration
+files relative to the checkout, so they can be launched from another directory.
 No installation, persistent environment change, or working-directory change is needed.
 It reports `OK` or `FAIL` and a reason for each device, then lists those that
 passed. One failure does not skip the other checks. All connections are closed.
@@ -193,6 +193,18 @@ Search limits come from `[centering]`; measurements and resolved settings are
 saved under `[storage].output_directory`, relative to the working directory.
 For the IDE Run button, add `--confirm-hardware MOVE_AND_FIRE` to the script
 arguments. Without it the operation is blocked before connecting to hardware.
+
+Acquire a planar map without running sensor centering:
+
+```powershell
+python examples/acquire_planar.py --confirm-hardware MOVE_AND_FIRE
+```
+
+Position the sensor before starting. The current robot TCP pose is the map
+origin; `[planar_mapping]` defines X/Y offsets and steps. Acquisition follows a
+serpentine path with fixed Z and orientation, using the configured pulse source
+and saving the summary, waveforms, and resolved configuration. The example does
+not apply `coil_center_guess` or search for a signal maximum.
 
 Alternative files can be selected before the subcommand:
 
