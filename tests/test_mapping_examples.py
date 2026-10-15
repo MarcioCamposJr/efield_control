@@ -12,6 +12,7 @@ from efield_control.configuration import PoseOffset, load_project_config
 from efield_control.domain import Pose, Waveform
 from efield_control.drivers.simulated import SimulatedRobot
 from examples.acquire_planar import main as acquire_planar
+from examples.acquire_circular import main as acquire_circular
 
 
 PROJECT_DIRECTORY = Path(__file__).resolve().parents[1]
@@ -89,3 +90,64 @@ def test_planar_acquires_grid_from_current_pose_without_centering(
     robot.disconnect.assert_called_once()
     device.close.assert_called_once()
     controller.close.assert_called_once()
+
+
+@pytest.mark.parametrize("center_first", [False, True])
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_circular_acquires_calibrated_angles_without_robot_or_sensor_centering(
+    mapping_config, monkeypatch, center_first, interrupted,
+):
+    config = replace(
+        mapping_config,
+        circular_mapping=replace(
+            mapping_config.circular_mapping,
+            base_start_deg=-10, base_stop_deg=10, base_step_deg=20,
+            inclination_start_deg=-5, inclination_stop_deg=5, inclination_step_deg=10,
+            center_before_mapping=center_first,
+        ),
+    )
+    monkeypatch.setattr(cli, "load_project_config", Mock(return_value=config))
+    monkeypatch.setattr(cli, "_robot", Mock(side_effect=AssertionError("Unexpected robot")))
+    device = Mock()
+    waveform = Waveform.from_iterables((-0.5, 0.5), (-0.25, 0.25), 15_625_000)
+    device.read_waveform.return_value = waveform
+    if interrupted:
+        device.read_waveform.side_effect = [waveform, KeyboardInterrupt]
+    controller = Mock()
+    monkeypatch.setattr(cli, "RedPitayaAcquisition", Mock(return_value=device))
+    monkeypatch.setattr(cli, "SerialMotorController", Mock(return_value=controller))
+
+    assert acquire_circular(["--confirm-hardware", "MOVE_AND_FIRE"]) == (130 if interrupted else 0)
+
+    expected_logical = [(-10, -5), (10, -5), (10, 5), (-10, 5)]
+    expected_physical = [(80, 87), (100, 87), (100, 97), (80, 97)]
+    expected_moves = expected_physical[:2] if interrupted else expected_physical
+    if center_first:
+        expected_moves = [(90, 92), *expected_moves]
+    assert [call.args for call in controller.move_to.call_args_list] == expected_moves
+    controller.center.assert_not_called()
+    controller.ping.assert_called_once()
+    assert device.arm.call_count == controller.fire.call_count == (2 if interrupted else 4)
+    rows = read_summary(config)
+    assert [(float(row["base_deg"]), float(row["inclination_deg"])) for row in rows] == (
+        expected_logical[:1] if interrupted else expected_logical
+    )
+    assert all(row["mode"] == "circular" for row in rows)
+    device.close.assert_called_once()
+    controller.close.assert_called_once()
+
+
+def test_circular_rejects_out_of_range_angles_before_connecting(mapping_config, monkeypatch):
+    config = replace(
+        mapping_config,
+        circular_mapping=replace(mapping_config.circular_mapping, base_start_deg=-100),
+    )
+    monkeypatch.setattr(cli, "load_project_config", Mock(return_value=config))
+    acquisition_factory = Mock(side_effect=AssertionError("Unexpected acquisition connection"))
+    controller_factory = Mock(side_effect=AssertionError("Unexpected serial connection"))
+    monkeypatch.setattr(cli, "RedPitayaAcquisition", acquisition_factory)
+    monkeypatch.setattr(cli, "SerialMotorController", controller_factory)
+    with pytest.raises(ValueError):
+        acquire_circular(["--confirm-hardware", "MOVE_AND_FIRE"])
+    acquisition_factory.assert_not_called()
+    controller_factory.assert_not_called()

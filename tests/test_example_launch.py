@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 PROJECT_DIRECTORY = Path(__file__).resolve().parents[1]
-EXPERIMENT_EXAMPLES = ("center_sensor.py", "acquire_planar.py")
+EXPERIMENT_EXAMPLES = ("center_sensor.py", "acquire_planar.py", "acquire_circular.py")
 
 
 class ExampleLaunchTests(unittest.TestCase):

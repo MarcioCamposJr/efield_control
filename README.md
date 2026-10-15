@@ -206,6 +206,21 @@ serpentine path with fixed Z and orientation, using the configured pulse source
 and saving the summary, waveforms, and resolved configuration. The example does
 not apply `coil_center_guess` or search for a signal maximum.
 
+Acquire a circular map without running sensor centering:
+
+```powershell
+python examples/acquire_circular.py --confirm-hardware MOVE_AND_FIRE
+```
+
+Position the sensor before starting. `[circular_mapping]` defines the logical
+base and inclination angles and steps. The serial angular stage traverses the
+grid in a serpentine path, using `angular_stage.toml` to convert angles to
+physical servo commands and validate the entire path before connecting.
+`center_before_mapping` optionally positions the stage at calibrated angular
+zero before the grid; this is a fixed positioning move without signal-based
+sensor centering. The robot is not connected. Acquisition uses Red Pitaya and
+the configured pulse source, saving the summary, waveforms, and resolved settings.
+
 Alternative files can be selected before the subcommand:
 
 ```powershell
@@ -218,7 +233,7 @@ uv run efield-control `
 ```
 
 Planar map limits are offsets relative to the robot's current pose. Circular
-map values are absolute angles sent to the stage controller. Every run creates
+map values are logical angles converted to calibrated servo commands. Every run creates
 a new directory containing `summary.csv` and one waveform per point.
 
 ## Hardware composition
