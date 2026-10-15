@@ -1,7 +1,8 @@
 """Experiment entry point: python -m efield_control.cli <command>.
 
 main reads arguments and files; run_center/run_planar/run_circular assemble
-the drivers, execute the experiment, and save results. The algorithms can
+the drivers, execute the experiment, and save results. run_pulse_test operates
+only the selected pulse source without acquisition or motion. The algorithms can
 also be used from custom scripts without going through this CLI.
 """
 
@@ -10,7 +11,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from collections.abc import Iterable
+from contextlib import ExitStack
+from dataclasses import asdict
 from typing import Any
 
 from .acquisition import AcquisitionService, AcquisitionSettings
@@ -22,6 +26,7 @@ from .drivers.red_pitaya import (
     RedPitayaDigitalPulse,
     RedPitayaSettings,
 )
+from .drivers.red_pitaya.scpi import scpi
 from .drivers.robots.dobot import DobotRobotAdapter
 from .drivers.robots.elfin import ElfinRobotAdapter
 from .drivers.serial_controller import SerialMotorController
@@ -282,6 +287,62 @@ def run_center(args: argparse.Namespace) -> int:
                     serial_controller.close()
 
 
+def run_pulse_test(args: argparse.Namespace) -> int:
+    """Send a finite pulse sequence without connecting a robot or arming acquisition."""
+    _require_confirmation(args)
+    config: ProjectConfig = args.project_config
+    test = config.pulse_test
+    source = config.pulse.source
+    if source == "mtms_api":
+        if test.count > 1 and test.interval_s < config.mtms.minimum_inter_pulse_interval_s:
+            raise ValueError(
+                "pulse_test.interval_s must be at least "
+                "mtms.minimum_inter_pulse_interval_s for multiple pulses."
+            )
+        MtmsSingleChannelClient.validate_environment()
+    print(f"Pulse test: source={source}, count={test.count}, interval={test.interval_s:g} s")
+    if source == "mtms_api":
+        print(f"mTMS channel={config.mtms.channel}, target={config.mtms.target_voltage_v:g} V")
+
+    with ExitStack() as cleanup:
+        if source == "serial":
+            pulse = SerialMotorController(
+                port=_require_value(args, "serial_port", "stage serial port"),
+                baudrate=config.hardware.stage_serial_baud,
+                timeout_s=config.hardware.stage_serial_timeout_s,
+            )
+            cleanup.callback(pulse.close)
+            try:
+                pulse.ping()
+            except TimeoutError:
+                # Opening USB serial can reboot the board and lose the first PING.
+                pulse.ping()
+        elif source == "redpitaya":
+            client = scpi(
+                _require_value(args, "rp_ip", "Red Pitaya host"),
+                timeout=config.robot.socket_timeout_s,
+                port=config.hardware.red_pitaya_port,
+            )
+            cleanup.callback(client.close)
+            pulse = RedPitayaDigitalPulse(
+                client, pin=config.pulse.pin, pulse_s=config.pulse.duration_s,
+            )
+        else:
+            client = MtmsSingleChannelClient(MtmsSingleChannelSettings(**asdict(config.mtms)))
+            # Register before startup so cleanup is attempted even on partial failure.
+            cleanup.callback(client.close)
+            pulse = MtmsApiPulse(client)
+            pulse.connect()
+
+        for index in range(test.count):
+            if index:
+                time.sleep(test.interval_s)
+            pulse.fire()
+            print(f"Pulse command {index + 1}/{test.count} completed.", flush=True)
+    print("Pulse test completed; connection closed.")
+    return 0
+
+
 def run_planar(args: argparse.Namespace) -> int:
     """Traverse X/Y offsets with the selected robot and save each measurement."""
     _require_confirmation(args)
@@ -465,6 +526,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("center", "Center the sensor with the configured robot", run_center),
         ("planar", "Run the configured planar map", run_planar),
         ("circular", "Run the configured angular stage map", run_circular),
+        ("pulse-test", "Test the configured stimulator without motion or acquisition", run_pulse_test),
     ):
         command = commands.add_parser(name, help=description)
         command.add_argument(
@@ -555,7 +617,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         )
         args.project_config = config
         apply_project_config(args, config)
-        # handler is show_config, run_center, run_planar, or run_circular.
+        # The selected handler owns device setup and operation.
         return int(args.handler(args))
     except KeyboardInterrupt:
         print("Operation interrupted by the user.", file=sys.stderr)

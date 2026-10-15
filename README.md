@@ -194,6 +194,26 @@ saved under `[storage].output_directory`, relative to the working directory.
 For the IDE Run button, add `--confirm-hardware MOVE_AND_FIRE` to the script
 arguments. Without it the operation is blocked before connecting to hardware.
 
+Test only the stimulator, without robot movement or sensor acquisition:
+
+```powershell
+python examples/pulse_stimulator.py --confirm-hardware MOVE_AND_FIRE
+```
+
+The example sends `[pulse_test].count` pulse commands (default 3), waiting
+`[pulse_test].interval_s` seconds (default 2) after completion before the next
+command. Edit these in `config/default.toml`. It uses `[pulse].source`:
+`serial` sends Arduino FIRE commands, `redpitaya` toggles the configured digital
+pin without arming acquisition, and `mtms_api` charges and pulses the channel
+at `[mtms].target_voltage_v`, then closes/discharges through the mTMS driver.
+For multiple API pulses, the interval must meet
+`[mtms].minimum_inter_pulse_interval_s`. The electrical trigger sources do not
+configure stimulator charge or intensity; prepare the stimulator separately.
+Progress reports completed commands; physical pulses are not verified by
+acquisition. Errors or Ctrl+C stop the sequence and attempt connection cleanup.
+The same operation is available as `python -m efield_control.cli pulse-test
+--confirm-hardware MOVE_AND_FIRE`.
+
 Acquire a planar map without running sensor centering:
 
 ```powershell

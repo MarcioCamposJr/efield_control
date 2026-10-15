@@ -130,6 +130,9 @@ class RedPitayaDigitalPulse:
         """Generate a pulse on the Red Pitaya digital pin connected to the stimulator."""
         self._write(False)
         time.sleep(0.01)
-        self._write(True)
-        time.sleep(self.pulse_s)
-        self._write(False)
+        try:
+            self._write(True)
+            time.sleep(self.pulse_s)
+        finally:
+            # Restore idle even when interrupted while the trigger is active.
+            self._write(False)

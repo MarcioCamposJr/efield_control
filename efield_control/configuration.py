@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -75,6 +76,18 @@ class PulseConfig:
             )
         if self.duration_s <= 0:
             raise ValueError("Pulse duration must be positive.")
+
+
+@dataclass(frozen=True, slots=True)
+class PulseTestConfig:
+    count: int = 3
+    interval_s: float = 2.0
+
+    def __post_init__(self) -> None:
+        if isinstance(self.count, bool) or not isinstance(self.count, int) or self.count < 1:
+            raise ValueError("Pulse test count must be a positive integer.")
+        if not math.isfinite(self.interval_s) or self.interval_s <= 0:
+            raise ValueError("Pulse test interval must be finite and positive.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,6 +201,7 @@ class ProjectConfig:
     storage: StorageConfig
     angular_calibration: "AngularStageCalibration"
     sensor_calibration: "SensorPoseCalibration"
+    pulse_test: PulseTestConfig = PulseTestConfig()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -267,6 +281,7 @@ DEFAULTS: dict[str, Any] = {
     "hardware": asdict(HardwareConfig()),
     "acquisition": asdict(AcquisitionConfig()),
     "pulse": asdict(PulseConfig()),
+    "pulse_test": asdict(PulseTestConfig()),
     "mtms": asdict(MtmsConfig()),
     "robot": asdict(RobotConfig()),
     "centering": asdict(CenteringConfig()),
@@ -345,6 +360,7 @@ def _build_project_config(
         hardware=HardwareConfig(**values["hardware"]),
         acquisition=AcquisitionConfig(**values["acquisition"]),
         pulse=PulseConfig(**values["pulse"]),
+        pulse_test=PulseTestConfig(**values["pulse_test"]),
         mtms=MtmsConfig(**values["mtms"]),
         robot=RobotConfig(**values["robot"]),
         centering=CenteringConfig(**values["centering"]),

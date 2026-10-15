@@ -55,6 +55,16 @@ pin = "DIO1_P"
 # also ignored by mtms_api, which has its own trigger-out duration below.
 duration_s = 0.010
 
+[pulse_test]
+# Used only by examples/pulse_stimulator.py and the pulse-test command.
+# No robot movement or sensor acquisition is performed.
+count = 3
+
+# Pause after each completed pulse command before starting the next one.
+# No pause is added before the first or after the last pulse. For mtms_api,
+# multiple pulses require at least mtms.minimum_inter_pulse_interval_s.
+interval_s = 2.0
+
 [mtms]
 # Single-channel stimulation settings used only when pulse.source = "mtms_api".
 # Channel numbering starts at zero. allowed_channels is an installation-level

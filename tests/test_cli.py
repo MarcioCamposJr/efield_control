@@ -20,7 +20,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(inclusive_range(1, -1, -1), (1, 0, -1))
 
     def test_hardware_command_requires_exact_confirmation(self):
-        for command in ("center", "planar", "circular"):
+        for command in ("center", "planar", "circular", "pulse-test"):
             args = build_parser().parse_args([command])
             with self.assertRaisesRegex(SystemExit, "Operation blocked"):
                 _require_confirmation(args)
