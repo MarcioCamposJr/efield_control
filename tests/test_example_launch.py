@@ -10,14 +10,25 @@ PROJECT_DIRECTORY = Path(__file__).resolve().parents[1]
 
 
 class ExampleLaunchTests(unittest.TestCase):
-    def test_simulation_runs_by_file_from_another_working_directory(self):
+    def test_centering_requires_confirmation_from_another_working_directory(self):
         result = subprocess.run(
-            [sys.executable, "-B", str(PROJECT_DIRECTORY / "examples/simulate_centering.py")],
+            [sys.executable, "-B", str(PROJECT_DIRECTORY / "examples/center_sensor.py")],
+            cwd=PROJECT_DIRECTORY / "examples",
+            capture_output=True, text=True, timeout=15,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Operation blocked", result.stderr)
+        self.assertIn("--confirm-hardware MOVE_AND_FIRE", result.stderr)
+
+    def test_centering_help_can_be_launched_without_hardware(self):
+        result = subprocess.run(
+            [sys.executable, "-B", str(PROJECT_DIRECTORY / "examples/center_sensor.py"),
+             "--help"],
             cwd=PROJECT_DIRECTORY / "examples",
             capture_output=True, text=True, timeout=15,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Center: X=3.00 mm, Y=-2.00 mm", result.stdout)
+        self.assertIn("--confirm-hardware", result.stdout)
 
     def test_connection_example_imports_checkout_and_loads_files_from_other_cwd(self):
         script = PROJECT_DIRECTORY / "examples/check_connections.py"

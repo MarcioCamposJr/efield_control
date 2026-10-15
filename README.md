@@ -52,15 +52,15 @@ scripts must not be imported because they execute connections at module level.
 ```powershell
 uv sync --extra dev
 uv run pytest
-uv run python -m examples.simulate_centering
 ```
 
 To run legacy plotting and processing scripts, install the analysis dependency
 group with `uv sync --extra dev --extra analysis`. Input paths are still
 configured inside each legacy script.
 
-The simulator uses a Gaussian field with a known center, allowing centering
-and trajectory logic to be validated without moving real hardware.
+The centering tests use a Gaussian field with a known center to validate the
+search without moving real hardware. `examples/center_sensor.py` runs real
+hardware centering.
 
 ## Configuration and calibration
 
@@ -128,7 +128,7 @@ python examples/check_connections.py
 The example reads the existing `.env`, experiment TOML, and calibration files.
 Both examples also support `python -m examples.<name>`. When launched by file
 path (including the IDE Run button), they prefer this checkout over an installed
-copy for that Python process only. The connection example resolves configuration
+copy for that Python process only. Both examples resolve configuration
 files relative to the checkout, so it can be launched from another directory.
 No installation, persistent environment change, or working-directory change is needed.
 It reports `OK` or `FAIL` and a reason for each device, then lists those that
@@ -177,6 +177,22 @@ python -m efield_control.cli center --confirm-hardware MOVE_AND_FIRE
 python -m efield_control.cli planar --confirm-hardware MOVE_AND_FIRE
 python -m efield_control.cli circular --confirm-hardware MOVE_AND_FIRE
 ```
+
+Run sensor centering directly from the example:
+
+```powershell
+python examples/center_sensor.py --confirm-hardware MOVE_AND_FIRE
+```
+
+This uses the configured Elfin or Dobot, Red Pitaya CH1/CH2, and `[pulse].source`.
+It starts at the current TCP pose plus `coil_center_guess`, searches X/Y for the
+largest `sqrt(Vpp(CH1)^2 + Vpp(CH2)^2)`, reduces the step when no meaningful
+improvement is found, and finishes at the best measured position. Z and
+orientation remain fixed at the calibrated starting pose during the search.
+Search limits come from `[centering]`; measurements and resolved settings are
+saved under `[storage].output_directory`, relative to the working directory.
+For the IDE Run button, add `--confirm-hardware MOVE_AND_FIRE` to the script
+arguments. Without it the operation is blocked before connecting to hardware.
 
 Alternative files can be selected before the subcommand:
 
