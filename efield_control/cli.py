@@ -327,11 +327,7 @@ def run_pulse_test(args: argparse.Namespace) -> int:
                 timeout_s=config.hardware.stage_serial_timeout_s,
             )
             cleanup.callback(pulse.close)
-            try:
-                pulse.ping()
-            except TimeoutError:
-                # Opening USB serial can reboot the board and lose the first PING.
-                pulse.ping()
+            pulse.ping()
         elif source == "redpitaya":
             client = scpi(
                 _require_value(args, "rp_ip", "Red Pitaya host"),

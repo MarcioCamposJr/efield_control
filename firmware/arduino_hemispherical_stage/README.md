@@ -59,6 +59,12 @@ The active Python workflow normally does not send `CENTER`. It reads logical
 centers and offsets from `config/calibration/angular_stage.toml`, converts them
 to physical angles, and sends `MOVEABS`. This keeps calibration in one place.
 
+Opening USB serial can reset the board and discard the first `PING`. The Python
+driver retries `PING` once after a timeout in all workflows, including circular
+mapping. Movement and firing commands are never retried automatically. A timeout
+includes the last non-empty serial response: `ARDUINO_READY` while awaiting
+`MOVED` can help identify a board restart; no response alone does not prove one.
+
 ## Differences from the previous ESP32 sketch
 
 - Replaces `ESP32Servo.h` with the standard `Servo.h` library.

@@ -113,11 +113,7 @@ def check_microcontroller(config: ProjectConfig) -> str:
     )
 
     def check() -> str:
-        try:
-            controller.ping()
-        except TimeoutError:
-            # Opening USB serial may reboot the board and discard the first PING.
-            controller.ping()
+        controller.ping()
         return "PING answered with PONG"
 
     return _with_cleanup(check, controller.close)

@@ -101,18 +101,19 @@ def test_mtms_interval_is_checked_before_imports_or_connections(pulse_config, mo
     cli.MtmsSingleChannelClient.validate_environment.assert_not_called()
 
 
-def test_serial_ping_retries_once_without_repeating_pulses(pulse_config, monkeypatch):
+def test_serial_ping_failure_prevents_pulses(pulse_config, monkeypatch):
     config = replace(pulse_config, pulse=replace(pulse_config.pulse, source="serial"),
                      pulse_test=PulseTestConfig(count=1))
     monkeypatch.setattr(cli, "load_project_config", Mock(return_value=config))
     controller = Mock()
-    controller.ping.side_effect = [TimeoutError, None]
+    controller.ping.side_effect = TimeoutError("No PONG after retry")
     monkeypatch.setattr(cli, "SerialMotorController", Mock(return_value=controller))
     sleep = Mock()
     monkeypatch.setattr(cli.time, "sleep", sleep)
-    assert main(["--confirm-hardware", "MOVE_AND_FIRE"]) == 0
-    assert controller.ping.call_count == 2
-    controller.fire.assert_called_once()
+    with pytest.raises(TimeoutError):
+        main(["--confirm-hardware", "MOVE_AND_FIRE"])
+    controller.ping.assert_called_once()
+    controller.fire.assert_not_called()
     controller.close.assert_called_once()
     sleep.assert_not_called()
 

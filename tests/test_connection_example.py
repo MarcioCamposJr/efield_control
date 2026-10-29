@@ -149,14 +149,6 @@ class ConnectionExampleTests(unittest.TestCase):
         controller.move_to.assert_not_called()
         controller.fire.assert_not_called()
 
-    def test_serial_retries_once_if_board_boot_discards_first_ping(self):
-        controller = Mock()
-        controller.ping.side_effect = [TimeoutError("booting"), None]
-        with patch.object(example, "SerialMotorController", return_value=controller):
-            example.check_microcontroller(self.config)
-        self.assertEqual(controller.ping.call_count, 2)
-        controller.close.assert_called_once()
-
     def test_serial_failure_still_closes(self):
         controller = Mock()
         controller.ping.side_effect = TimeoutError("offline")

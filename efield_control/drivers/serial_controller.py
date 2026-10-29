@@ -39,20 +39,31 @@ class SerialMotorController:
     def _wait_prefix(self, prefix: str, timeout_s: float | None = None) -> str:
         """Wait for the controller response and propagate rejections or timeouts."""
         deadline = time.monotonic() + (timeout_s or self.timeout_s)
+        last_response = None
         while time.monotonic() <= deadline:
             line = self._serial.readline().decode(errors="replace").strip()
+            if line:
+                last_response = line
             if line.startswith(prefix):
                 return line
             if "_ERROR" in line or line.startswith("ERROR"):
                 raise ControllerCommandError(
                     f"The controller rejected the command: {line}"
                 )
-        raise TimeoutError(f"The controller did not respond with {prefix!r}.")
+        raise TimeoutError(
+            f"The controller did not respond with {prefix!r}. "
+            f"Last non-empty response: {last_response!r}."
+        )
 
     def ping(self) -> None:
-        """Send PING and require PONG to verify communication with the stage."""
+        """Require PONG, retrying once if opening serial discarded the first PING."""
         self._send("PING")
-        self._wait_prefix("PONG")
+        try:
+            self._wait_prefix("PONG")
+        except TimeoutError:
+            # USB serial opening can reset the Arduino before it receives PING.
+            self._send("PING")
+            self._wait_prefix("PONG")
 
     def center(self) -> None:
         """Send CENTER to use the physical center defined in the firmware.

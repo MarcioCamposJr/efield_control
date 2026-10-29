@@ -1,5 +1,6 @@
 import pytest
 
+from efield_control.drivers import serial_controller
 from efield_control.drivers.serial_controller import (
     ControllerCommandError,
     SerialMotorController,
@@ -47,3 +48,52 @@ def test_firmware_error_is_reported_without_waiting_for_timeout() -> None:
 
     with pytest.raises(ControllerCommandError, match="FIRE_ERROR,DISABLED"):
         controller.fire()
+
+
+@pytest.mark.parametrize("respond_to_retry", [False, True])
+def test_ping_retries_once_after_startup_timeout(monkeypatch, respond_to_retry):
+    serial = FakeSerial([])
+    clock = [0.0]
+
+    def read():
+        clock[0] += 4
+        if respond_to_retry and len(serial.writes) == 2:
+            return b"PONG\n"
+        return b"ARDUINO_READY\n"
+
+    serial.readline = read
+    monkeypatch.setattr(serial_controller.time, "monotonic", lambda: clock[0])
+    controller = SerialMotorController(port="unused", serial_port=serial)
+    if respond_to_retry:
+        controller.ping()
+    else:
+        with pytest.raises(TimeoutError, match="ARDUINO_READY"):
+            controller.ping()
+    assert serial.writes == [b"PING\n", b"PING\n"]
+
+
+@pytest.mark.parametrize("command,arguments", [
+    ("move_to", (90, 92)), ("center", ()), ("fire", ()),
+])
+def test_actuation_timeout_reports_last_line_without_retry(monkeypatch, command, arguments):
+    serial = FakeSerial([])
+    clock = [0.0]
+
+    def read():
+        clock[0] += 2
+        return b"ARDUINO_READY\n" if clock[0] == 2 else b""
+
+    serial.readline = read
+    monkeypatch.setattr(serial_controller.time, "monotonic", lambda: clock[0])
+    controller = SerialMotorController(port="unused", serial_port=serial)
+    with pytest.raises(TimeoutError, match="Last non-empty response: 'ARDUINO_READY'"):
+        getattr(controller, command)(*arguments)
+    assert len(serial.writes) == 1
+
+
+def test_ping_rejection_is_not_retried():
+    serial = FakeSerial(["COMMAND_ERROR,UNKNOWN"])
+    controller = SerialMotorController(port="unused", serial_port=serial)
+    with pytest.raises(ControllerCommandError):
+        controller.ping()
+    assert serial.writes == [b"PING\n"]
