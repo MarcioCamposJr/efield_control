@@ -78,3 +78,23 @@ shuts down all sockets and joins the feedback reader.
 Tests use simulated sockets and feedback. Controller compatibility, coordinate
 frames, motion accuracy, and stop behavior still require hardware validation.
 
+## Check an idle movement connection
+
+With the robot already enabled and space verified for a 1 mm displacement in
+positive X and back, run these tests separately from the repository root:
+
+```bash
+python examples/check_dobot_idle.py --dx-mm 1 --wait-s 0 --confirm-hardware MOVE_ONLY
+python examples/check_dobot_idle.py --dx-mm 1 --wait-s 20 --confirm-hardware MOVE_ONLY
+```
+
+Each invocation opens fresh connections, reads the current pose, waits, moves
+by the requested X offset, and returns after confirmed arrival. It prints the
+Python interpreter, poses, elapsed time, and failing stage. Adjust the offset
+direction for your workspace; it must exceed the configured position tolerance.
+Only the Dobot is connected: no acquisition, stimulator, or serial stage.
+The driver commands and timeouts are unchanged. A failure aborts the test without
+retrying or commanding a return because execution of the failed move is uncertain.
+If only the delayed test fails, idle connection closure is a hypothesis to
+investigate, not a proven cause. Preserve both outputs for comparison.
+
