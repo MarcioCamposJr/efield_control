@@ -57,7 +57,7 @@ def read_summary(config):
 
 @pytest.mark.parametrize("interrupted", [False, True])
 def test_planar_acquires_grid_from_current_pose_without_centering(
-    mapping_config, monkeypatch, interrupted,
+    mapping_config, monkeypatch, capsys, interrupted,
 ):
     robot = Mock(wraps=SimulatedRobot(Pose(10, 20, 30, 1, 2, 3)))
     device = Mock()
@@ -83,6 +83,9 @@ def test_planar_acquires_grid_from_current_pose_without_centering(
         expected_xy[:1] if interrupted else expected_xy
     )
     assert all(row["mode"] == "planar" and float(row["z_mm"]) == 30 for row in rows)
+    output = capsys.readouterr().out
+    assert output.count("CH1 p-p=1 V | CH2 p-p=0.5 V") == len(rows)
+    assert "[planar 0,0 X=9.000 Y=18.000 Z=30.000 mm]" in output
     if interrupted:
         robot.stop.assert_called_once()
     else:
@@ -95,7 +98,7 @@ def test_planar_acquires_grid_from_current_pose_without_centering(
 @pytest.mark.parametrize("center_first", [False, True])
 @pytest.mark.parametrize("interrupted", [False, True])
 def test_circular_acquires_calibrated_angles_without_robot_or_sensor_centering(
-    mapping_config, monkeypatch, center_first, interrupted,
+    mapping_config, monkeypatch, capsys, center_first, interrupted,
 ):
     config = replace(
         mapping_config,
@@ -133,6 +136,9 @@ def test_circular_acquires_calibrated_angles_without_robot_or_sensor_centering(
         expected_logical[:1] if interrupted else expected_logical
     )
     assert all(row["mode"] == "circular" for row in rows)
+    output = capsys.readouterr().out
+    assert output.count("CH1 p-p=1 V | CH2 p-p=0.5 V") == len(rows)
+    assert "[circular 0,0 base=-10.000 inclination=-5.000 deg]" in output
     device.close.assert_called_once()
     controller.close.assert_called_once()
 

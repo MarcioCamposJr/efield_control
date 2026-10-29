@@ -21,6 +21,7 @@ from .acquisition import AcquisitionService, AcquisitionSettings
 from .calibration import CalibratedAngularPositioner, calibrated_center_guess
 from .centering import CenteringSettings, SensorCentering
 from .configuration import ProjectConfig, load_project_config
+from .domain import Measurement
 from .drivers.red_pitaya import (
     RedPitayaAcquisition,
     RedPitayaDigitalPulse,
@@ -213,6 +214,15 @@ def _robot(args: argparse.Namespace) -> CartesianRobot:
     raise ValueError("Robot type must be 'elfin' or 'dobot'.")
 
 
+def _print_measurement(point: str, measurement: Measurement) -> None:
+    print(
+        f"[{point}] CH1 p-p={measurement.p2p_ch1_v:.6g} V | "
+        f"CH2 p-p={measurement.p2p_ch2_v:.6g} V | "
+        f"M={measurement.magnitude_v:.6g} V | repetitions={measurement.repetitions}",
+        flush=True,
+    )
+
+
 def run_center(args: argparse.Namespace) -> int:
     """Center the sensor with the selected robot, measuring suggested positions."""
     _require_confirmation(args)
@@ -249,6 +259,11 @@ def run_center(args: argparse.Namespace) -> int:
                     x_mm=sample.x_mm,
                     y_mm=sample.y_mm,
                 ),
+                sample.measurement,
+            )
+            _print_measurement(
+                f"center {sample.iteration}:{sample.label} "
+                f"X={sample.x_mm:.3f} Y={sample.y_mm:.3f} mm",
                 sample.measurement,
             )
 
@@ -378,6 +393,11 @@ def run_planar(args: argparse.Namespace) -> int:
                 ),
                 measurement,
             )
+            _print_measurement(
+                f"planar {point.row},{point.column} "
+                f"X={pose.x_mm:.3f} Y={pose.y_mm:.3f} Z={pose.z_mm:.3f} mm",
+                measurement,
+            )
         print(f"Planar map completed: {store.run_directory}")
         return 0
     except BaseException:
@@ -450,6 +470,11 @@ def run_circular(args: argparse.Namespace) -> int:
                     base_deg=point.base_deg,
                     inclination_deg=point.inclination_deg,
                 ),
+                measurement,
+            )
+            _print_measurement(
+                f"circular {point.row},{point.column} "
+                f"base={point.base_deg:.3f} inclination={point.inclination_deg:.3f} deg",
                 measurement,
             )
         print(f"Circular map completed: {store.run_directory}")

@@ -191,6 +191,11 @@ improvement is found, and finishes at the best measured position. Z and
 orientation remain fixed at the calibrated starting pose during the search.
 Search limits come from `[centering]`; measurements and resolved settings are
 saved under `[storage].output_directory`, relative to the working directory.
+Centering, planar, and circular runs also print each completed measurement in the
+terminal, with its position or angles, CH1/CH2 peak-to-peak values in volts,
+combined magnitude, and repetition count. With multiple repetitions, the values
+are the medians used by the algorithm, printed after all repetitions at the point
+have completed; this is not a continuous oscilloscope stream.
 For the IDE Run button, add `--confirm-hardware MOVE_AND_FIRE` to the script
 arguments. Without it the operation is blocked before connecting to hardware.
 

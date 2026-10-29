@@ -90,4 +90,9 @@ def test_example_centers_and_saves_or_stops_on_interrupt(
         assert (float(rows[0]["x_mm"]), float(rows[0]["y_mm"])) == (11, 19)
         assert any(float(row["x_mm"]) == 14 and float(row["y_mm"]) == 17 for row in rows)
         assert list((run_directory / "waveforms").glob("*.csv"))
-        assert "Center found" in capsys.readouterr().out
+        output = capsys.readouterr().out
+        assert "Center found" in output
+        assert "[center 0:" in output
+        assert "X=11.000 Y=19.000 mm] CH1 p-p=" in output
+        assert output.count("CH1 p-p=") == len(rows)
+        assert output.count("CH2 p-p=") == len(rows)
