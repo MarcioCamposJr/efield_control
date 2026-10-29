@@ -260,6 +260,22 @@ It opens no hardware and requires Matplotlib from the optional analysis group
 (`python -m pip install -e ".[analysis]"`, or `uv sync --extra analysis`).
 This is an angular point map, not a reconstructed 3D shell or electric field in V/m.
 
+Overlay the stored time series from all circular coordinates in three panels:
+
+```bash
+python examples/plot_circular_waveforms.py data/circular_YYYYMMDD_HHMMSS
+```
+
+This saves `circular_waveforms.png` with CH1, CH2, and instantaneous
+`sqrt(CH1(t)^2 + CH2(t)^2)` in volts. Every coordinate has the same color across
+panels, with a spatial color key on the right. Logical `(0, 0)` is black and thicker
+when measured; other colors get lighter with Euclidean distance in the angular
+coordinate plane, with hue indicating direction. Missing coordinates are not
+invented. Time is in microseconds from the saved buffer start, without trigger
+alignment or filtering. Requires saved waveforms (`[storage].save_waveforms=true`);
+with repeated acquisitions, only the last waveform at each point was stored,
+whereas the summary contains median metrics. Copied run folders are supported.
+
 Alternative files can be selected before the subcommand:
 
 ```powershell
