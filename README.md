@@ -199,6 +199,27 @@ have completed; this is not a continuous oscilloscope stream.
 For the IDE Run button, add `--confirm-hardware MOVE_AND_FIRE` to the script
 arguments. Without it the operation is blocked before connecting to hardware.
 
+During centering, planar, or circular acquisition, focus the terminal running
+the command and press a key, without Enter (upper or lower case):
+
+- **P**: pause after saving the current point.
+- **R**: resume the paused process.
+- **S**: stop after saving the current point, including while paused.
+- **Ctrl+C**: request interruption without waiting for a point checkpoint.
+
+Keys are checked before the scan and after each saved point, including all its
+repetitions. A key pressed during motion, pulse generation, acquisition, or device
+startup takes effect at the next checkpoint. During pause the connections remain
+open and no next point is started. S takes priority over other queued commands
+and uses the normal interruption cleanup (exit code 130), preserving saved CSVs
+and waveforms. Driver/native calls and cleanup can delay Ctrl+C completion, and
+the current incomplete point may not be saved. Single-key control requires a real
+interactive terminal on Linux/macOS or Windows; an IDE output panel or redirected
+input may not support it. Terminal settings are restored when the run exits.
+Pausing does not explicitly discharge the stimulator; its configured behavior
+still applies. These controls are not an emergency stop. Resuming after ending
+the process or restoring an interrupted run from disk is not supported.
+
 Test only the stimulator, without robot movement or sensor acquisition:
 
 ```powershell

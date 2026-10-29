@@ -37,6 +37,7 @@ from .drivers.stimulators.mtms import (
     MtmsSingleChannelSettings,
 )
 from .mapping import CircularMapping, PlanarMapping, circular_serpentine, planar_serpentine
+from .keyboard_control import KeyboardControl
 from .ports import CartesianRobot
 from .storage import CsvRunStore, MeasurementLocation
 from .workflows import CenterSensorWorkflow
@@ -191,7 +192,15 @@ def _new_store(args: argparse.Namespace, run_name: str) -> CsvRunStore:
         "resolved_config.json",
         {"loaded_config": config.to_dict(), "effective_settings": effective},
     )
+    print(f"Results: {store.run_directory}", flush=True)
     return store
+
+
+def _check_run_control(args: argparse.Namespace) -> None:
+    """Handle operator requests between points, after completed data has been saved."""
+    checkpoint = getattr(args, "check_run_control", None)
+    if checkpoint is not None:
+        checkpoint()
 
 
 def _robot(args: argparse.Namespace) -> CartesianRobot:
@@ -266,10 +275,12 @@ def run_center(args: argparse.Namespace) -> int:
                 f"X={sample.x_mm:.3f} Y={sample.y_mm:.3f} mm",
                 sample.measurement,
             )
+            _check_run_control(args)
 
         origin = calibrated_center_guess(
             robot.current_pose(), args.project_config.sensor_calibration
         )
+        _check_run_control(args)
         result = CenterSensorWorkflow(robot, service, algorithm).run(
             origin=origin,
             observer=save_sample,
@@ -377,6 +388,7 @@ def run_planar(args: argparse.Namespace) -> int:
         mtms_pulse = _mtms_if_requested(args)
         service = _service(args, acquisition, serial_controller, mtms_pulse)
         origin = robot.current_pose()
+        _check_run_control(args)
         # The map yields one point at a time; this loop saves each result.
         for point, pose, measurement in PlanarMapping(robot, service).run(origin, points):
             store.append(
@@ -394,6 +406,7 @@ def run_planar(args: argparse.Namespace) -> int:
                 f"X={pose.x_mm:.3f} Y={pose.y_mm:.3f} Z={pose.z_mm:.3f} mm",
                 measurement,
             )
+            _check_run_control(args)
         print(f"Planar map completed: {store.run_directory}")
         return 0
     except BaseException:
@@ -454,10 +467,12 @@ def run_circular(args: argparse.Namespace) -> int:
         positioner = CalibratedAngularPositioner(
             controller, config.angular_calibration
         )
+        _check_run_control(args)
         if args.center_first:
             positioner.center()
         mtms_pulse = _mtms_if_requested(args)
         service = _service(args, acquisition, controller, mtms_pulse)
+        _check_run_control(args)
         for point, measurement in CircularMapping(positioner, service).run(points):
             store.append(
                 MeasurementLocation(
@@ -473,6 +488,7 @@ def run_circular(args: argparse.Namespace) -> int:
                 f"base={point.base_deg:.3f} inclination={point.inclination_deg:.3f} deg",
                 measurement,
             )
+            _check_run_control(args)
         print(f"Circular map completed: {store.run_directory}")
         return 0
     finally:
@@ -639,6 +655,10 @@ def main(argv: Iterable[str] | None = None) -> int:
         args.project_config = config
         apply_project_config(args, config)
         # The selected handler owns device setup and operation.
+        if args.command in {"center", "planar", "circular"}:
+            with KeyboardControl() as control:
+                args.check_run_control = control.checkpoint
+                return int(args.handler(args))
         return int(args.handler(args))
     except KeyboardInterrupt:
         print("Operation interrupted by the user.", file=sys.stderr)
