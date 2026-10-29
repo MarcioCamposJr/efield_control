@@ -121,7 +121,7 @@ movement_timeout_s = 30.0
 settling_time_s = 1.0
 
 # Requested motion speed, as a percentage of the controller's maximum (1-100).
-# Elfin applies its speed ratio; Dobot uses SpeedL on each movement command.
+# Elfin applies its speed ratio; Dobot sets the global SpeedFactor before MovL.
 speed_percent = 10
 # Maximum time for a TCP connection or response from either robot controller.
 socket_timeout_s = 3.0

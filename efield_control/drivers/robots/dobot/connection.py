@@ -136,13 +136,14 @@ class DobotConnection:
         self._command("dashboard", "EnableRobot()")
 
     def move_linear(self, target: list[float], speed_percent: int) -> None:
-        """Send MovL on the motion channel, with a speed limit for this command."""
+        """Set the global speed factor, then send MovL on the motion channel."""
         if len(target) != 6 or not all(math.isfinite(value) for value in target):
             raise ValueError("Dobot target must contain six finite coordinates.")
         if not 1 <= speed_percent <= 100:
             raise ValueError("Dobot speed percentage must be between 1 and 100.")
         coordinates = ",".join(format(value, ".12g") for value in target)
-        self._command("movement", f"MovL({coordinates},SpeedL={speed_percent})")
+        self._command("dashboard", f"SpeedFactor({speed_percent})")
+        self._command("movement", f"MovL({coordinates})")
 
     def stop_robot(self) -> None:
         """ResetRobot is the motion stop command in the supported V3 protocol."""

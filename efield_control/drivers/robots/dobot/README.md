@@ -64,9 +64,12 @@ the sensor pose and map origin refer to the intended frame.
 
 ## Motion and failure behavior
 
-`MovL(...,SpeedL=N)` limits speed for this command. A zero error code confirms
-acceptance, not completion. `move_to()` requires new feedback showing an idle
-controller at the target, within both tolerances, then waits for settling and
+Before each movement, `SpeedFactor(N)` is sent on the dashboard channel and must
+succeed before `MovL(x,y,z,rx,ry,rz)` is sent on the movement channel. This matches
+the commands in the user's validated `tms-robot-control` Dobot driver. The speed
+factor changes the controller's global rate and is not restored on disconnect.
+A zero error code confirms acceptance, not completion. `move_to()` requires new
+feedback showing an idle controller at the target, within both tolerances, then waits for settling and
 rechecks the pose before returning. A target already reached is a no-op.
 
 Faults, dropped connections, stale feedback, rejected commands, invalid frames,

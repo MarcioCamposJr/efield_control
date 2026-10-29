@@ -313,7 +313,8 @@ accepted in TOML or CLI arguments. `EFIELD_ELFIN_USE_NEW_API` also belongs in
 
 The `[robot]` TOML section contains shared speed, movement and socket timeouts,
 settling time, and target tolerances. Both drivers apply these parameters before
-allowing a measurement; Elfin uses its speed ratio and Dobot uses per-move SpeedL.
+allowing a measurement; Elfin uses its speed ratio and Dobot sets the global
+SpeedFactor before each MovL. Dobot's global rate is not restored on disconnect.
 
 To command the circular stage through the Red Pitaya, define the DIO pins and
 the electrical motion-complete handshake.

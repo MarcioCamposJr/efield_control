@@ -8,7 +8,7 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from efield_control.cli import _robot, apply_project_config, build_parser, main
 from efield_control.configuration import HardwareConfig, RobotConfig, load_project_config
@@ -142,12 +142,27 @@ class DobotProtocolTests(unittest.TestCase):
             with self.assertRaises((ConnectionError, TimeoutError)):
                 connection.get_feedback()
 
-    def test_command_reads_fragmented_reply_and_uses_per_move_speed(self):
-        command = "MovL(1,2,3,4,5,6,SpeedL=10)"
-        connection, sockets = self.connection(movement=[b"0,{},", command.encode(), b";"])
-        connection.move_linear([1, 2, 3, 4, 5, 6], 10)
+    def test_command_reads_fragmented_reply_and_sets_global_speed_before_moving(self):
+        command = "MovL(1,2,3,4,5,6)"
+        connection, sockets = self.connection(
+            dashboard=[b"0,{},SpeedFactor(10);"],
+            movement=[b"0,{},", command.encode(), b";"],
+        )
+        with patch.object(connection, "_command", wraps=connection._command) as send:
+            connection.move_linear([1, 2, 3, 4, 5, 6], 10)
+        self.assertEqual(send.call_args_list, [
+            call("dashboard", "SpeedFactor(10)"), call("movement", command),
+        ])
         self.assertEqual(sockets[1].sent, [command.encode()])
-        self.assertEqual(sockets[0].sent, [])
+        self.assertEqual(sockets[0].sent, [b"SpeedFactor(10)"])
+
+    def test_speed_failure_prevents_movement(self):
+        for chunks in ([b"-1,{},SpeedFactor(10);"], [b"bad;"], [], [socket.timeout("timeout")]):
+            with self.subTest(chunks=chunks):
+                connection, sockets = self.connection(dashboard=chunks)
+                with self.assertRaises((DobotCommandError, ConnectionError, TimeoutError)):
+                    connection.move_linear([1, 2, 3, 4, 5, 6], 10)
+                self.assertEqual(sockets[1].sent, [])
 
     def test_error_malformed_and_mismatched_replies_raise(self):
         for reply in (b"-1,{},ResetRobot();", b"bad;", b"0,{},Other();"):
