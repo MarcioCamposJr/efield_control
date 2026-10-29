@@ -246,6 +246,20 @@ zero before the grid; this is a fixed positioning move without signal-based
 sensor centering. The robot is not connected. Acquisition uses Red Pitaya and
 the configured pulse source, saving the summary, waveforms, and resolved settings.
 
+Plot a completed or interrupted circular run using its results directory:
+
+```bash
+python examples/plot_circular.py data/circular_YYYYMMDD_HHMMSS
+```
+
+This writes `circular_map.png` beside `summary.csv`, with three panels showing
+CH1 peak-to-peak, CH2 peak-to-peak, and combined magnitude in volts at each measured
+logical base/inclination angle. Each panel has its own color scale; missing points
+are not interpolated. The script also accepts the `summary.csv` path directly.
+It opens no hardware and requires Matplotlib from the optional analysis group
+(`python -m pip install -e ".[analysis]"`, or `uv sync --extra analysis`).
+This is an angular point map, not a reconstructed 3D shell or electric field in V/m.
+
 Alternative files can be selected before the subcommand:
 
 ```powershell
